@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="洞察者 Insight 本地知识库问答控制台" />
+    <title>洞察者 Insight · Local RAG Console</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">LOCAL-FIRST RAG · METEOROLOGY</p>
+          <h1>洞察者 <span>Insight</span></h1>
+          <p class="lede">把气象业务资料留在本地，用可追溯的检索结果回答问题。</p>
+        </div>
+        <div class="health-card" id="health-card" aria-live="polite">
+          <span class="status-dot pending"></span>
+          <div><strong id="health-status">正在检查服务</strong><small id="health-detail">连接本地 API…</small></div>
+        </div>
+      </header>
+
+      <section class="workspace-grid" aria-label="Insight 工作区">
+        <article class="panel documents-panel">
+          <div class="panel-heading">
+            <div><p class="section-kicker">01 · KNOWLEDGE BASE</p><h2>资料库</h2></div>
+            <button class="icon-button" id="refresh-documents" type="button" title="刷新资料库">↻</button>
+          </div>
+          <form id="upload-form" class="upload-zone">
+            <label for="document-file" class="file-picker">
+              <span class="upload-icon">↑</span>
+              <span><strong>导入资料</strong><small>PDF · Markdown · TXT</small></span>
+            </label>
+            <input id="document-file" name="file" type="file" accept=".pdf,.md,.markdown,.txt,application/pdf,text/plain,text/markdown" required />
+            <button class="primary-button" type="submit">开始索引</button>
+          </form>
+          <p class="panel-status" id="document-status" aria-live="polite">准备导入第一份资料。</p>
+          <div class="document-list" id="document-list"><div class="empty-state">正在加载资料库…</div></div>
+        </article>
+
+        <article class="panel search-panel">
+          <div class="panel-heading">
+            <div><p class="section-kicker">02 · HYBRID RETRIEVAL</p><h2>检索</h2></div>
+            <span class="pill">BM25 + VECTOR</span>
+          </div>
+          <form id="search-form" class="query-form">
+            <label class="sr-only" for="search-query">检索问题</label>
+            <input id="search-query" type="search" placeholder="例如：台风预警信号分为几级？" required />
+            <button class="primary-button" type="submit">检索</button>
+          </form>
+          <p class="panel-status" id="search-status" aria-live="polite">输入问题，查看混合召回结果。</p>
+          <div class="result-list" id="search-results"><div class="empty-state">检索结果会显示在这里。</div></div>
+        </article>
+
+        <article class="panel chat-panel">
+          <div class="panel-heading">
+            <div><p class="section-kicker">03 · GROUNDED ANSWER</p><h2>问答</h2></div>
+            <span class="pill accent">SSE STREAM</span>
+          </div>
+          <div class="answer-card" id="answer-card">
+            <div class="answer-placeholder">先导入资料，再向本地知识库提问。回答会附带来源和工作流状态。</div>
+          </div>
+          <div class="source-list" id="chat-sources"></div>
+          <div class="stage-list" id="chat-stages"></div>
+          <form id="chat-form" class="query-form chat-form">
+            <label class="sr-only" for="chat-query">问答问题</label>
+            <textarea id="chat-query" rows="2" placeholder="向知识库提问…" required></textarea>
+            <div class="chat-actions"><span class="panel-status" id="chat-status">回答仅基于检索到的资料。</span><button class="primary-button" id="chat-submit" type="submit">提问</button><button class="secondary-button hidden" id="chat-stop" type="button">停止</button></div>
+          </form>
+        </article>
+      </section>
+
+      <footer><span>Insight · local-first RAG</span><a href="/docs" target="_blank" rel="noreferrer">API 文档 ↗</a></footer>
+    </main>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

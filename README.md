@@ -43,6 +43,7 @@ flowchart LR
 - 文档支持来源/标签过滤，搜索支持分页；问答支持可选会话上下文和 SSE 事件流。
 - RAG 工作流返回 query analysis、retrieval、rerank、relevance check、generation/fallback 阶段信息。
 - 评估脚本输出实际运行得到的 hit rate、MRR、拒答准确性和平均延迟；README 不预填性能指标。
+- 内置无 Node 依赖的本地 Web Console，可直接完成资料导入、混合检索和流式问答演示。
 
 ## 技术栈
 
@@ -58,7 +59,8 @@ app/
 ├── models/       # domain models
 ├── retrieval/    # BM25, vector, hybrid fusion
 ├── schemas/      # API schemas
-└── services/     # catalog, Ollama, ingestion, jobs, sessions, QA
+├── services/     # catalog, Ollama, ingestion, jobs, sessions, QA
+├── web/          # dependency-free local browser console
 └── workflows/    # explicit RAG stage state
 data/
 ├── sample_docs/  # synthetic demo documents
@@ -81,6 +83,8 @@ uv pip install -e ".[dev]"
 cp .env.example .env
 uvicorn app.main:app --reload
 ```
+
+启动后打开 [http://localhost:8000/](http://localhost:8000/)，即可使用本地 Web Console。页面不需要 Node.js、前端构建命令或外部 CDN；它与 FastAPI 使用同源请求，上传后会自动轮询索引任务，并在问答区展示 SSE 片段、来源和阶段状态。也可以继续使用 `/docs` 查看完整 API。
 
 如果不安装或不启动外部模型，应用仍可以启动并使用关键词检索；问答和向量召回会根据依赖状态返回明确结果。
 
@@ -183,7 +187,8 @@ python scripts/evaluate.py --output data/eval-result.json
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
-- 当前没有用户认证、权限控制、前端界面和多租户能力。
+- 当前没有用户认证、权限控制、会话列表和多租户能力。
+- Web Console 是面向本地单用户的轻量演示层，不提供认证、权限、会话列表或复杂文档管理能力。
 - 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
 - 原生流式效果取决于 Ollama 服务和模型；流式连接异常时会退化为完整回答事件。
 - Rerank 目前是可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。

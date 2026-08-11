@@ -3,8 +3,11 @@ from __future__ import annotations
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app import __version__
 from app.api.routes import AppServices, create_router
@@ -19,6 +22,8 @@ from app.services.ollama import OllamaClient
 from app.services.qa import QuestionAnsweringService
 from app.services.rerank import SimpleKeywordReranker
 from app.services.session import SessionService
+
+WEB_DIR = Path(__file__).resolve().parent / "web"
 
 
 def build_services(config: Settings = settings) -> AppServices:
@@ -96,6 +101,12 @@ def create_app(config: Settings = settings, services: AppServices | None = None)
         return response
 
     app.include_router(create_router(services or build_services(config)))
+
+    @app.get("/", include_in_schema=False)
+    def web_console() -> FileResponse:
+        return FileResponse(WEB_DIR / "index.html", media_type="text/html")
+
+    app.mount("/assets", StaticFiles(directory=WEB_DIR), name="web-assets")
     return app
 
 

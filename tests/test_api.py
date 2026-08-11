@@ -65,6 +65,16 @@ def test_health_and_upload(tmp_path):
     assert client.get("/documents").json()[0]["filename"] == "guide.txt"
 
 
+def test_web_console_assets_and_api_routes(tmp_path):
+    client = make_client(tmp_path)
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "洞察者" in page.text
+    assert client.get("/assets/app.js").headers["content-type"].startswith("text/javascript")
+    assert client.get("/assets/styles.css").headers["content-type"].startswith("text/css")
+    assert client.get("/health").json()["status"] == "ok"
+
+
 def test_chat_mock_and_refusal(tmp_path):
     client = make_client(tmp_path)
     client.post(
