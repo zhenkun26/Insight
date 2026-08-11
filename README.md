@@ -221,7 +221,7 @@ python -c "from app.main import app; print(app.title)"
 python scripts/evaluate.py --output data/eval-result.json
 ```
 
-默认 profile 是 `disabled`：只运行本地 BM25 基线，不访问 Ollama、Milvus 或外部 API。可以用同一问题集比较不同重排路径：
+默认检索模式是 `bm25`，且重排 `disabled`：只运行本地 BM25 基线，不访问 Ollama、Milvus 或外部 API。可以用同一问题集比较不同检索和重排路径：
 
 ```bash
 # 默认离线基线
@@ -237,15 +237,34 @@ python scripts/evaluate.py \
   --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
   --top-k 5 \
   --output /tmp/insight-eval-ollama.json
+
+# 向量-only：显式调用 Ollama Embedding，使用内存向量后端
+python scripts/evaluate.py \
+  --retrieval-mode vector \
+  --vector-backend memory \
+  --embedding-model "${EMBEDDING_MODEL:-nomic-embed-text}" \
+  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
+  --output /tmp/insight-eval-vector.json
+
+# 混合检索 + Milvus Lite：URI 和 collection 请按本次实验隔离
+python scripts/evaluate.py \
+  --retrieval-mode hybrid \
+  --vector-backend milvus \
+  --embedding-model "${EMBEDDING_MODEL:-nomic-embed-text}" \
+  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
+  --milvus-uri /tmp/insight-eval-milvus.db \
+  --milvus-collection insight_eval_hybrid \
+  --output /tmp/insight-eval-hybrid.json
 ```
 
-输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `profile`、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。其中 `null` 表示阶段未启用，不代表零毫秒；Ollama profile 的模型、地址、超时和实际延迟会写入结果。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
+输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。其中 `null` 表示阶段未启用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
 
 ## 已知限制
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
 - 扫描 PDF OCR 是可选能力，需要本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
+- 向量评估需要本地 Ollama Embedding；Milvus Lite 评估会写入指定 URI，重复实验应使用新的 collection 或临时数据库文件。
 - 当前没有用户认证、权限控制、会话列表和多租户能力。
 - Web Console 是面向本地单用户的轻量演示层，不提供认证、权限、会话列表或复杂文档管理能力。
 - 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。

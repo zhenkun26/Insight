@@ -14,9 +14,12 @@ from app.ingestion.parsers import parse_document
 from app.models.domain import Chunk
 from app.retrieval.bm25 import BM25Index
 from app.retrieval.hybrid import HybridRetriever
+from app.retrieval.vector import InMemoryVectorStore, MilvusVectorStore
 from app.services.ollama import OllamaClient
 from app.services.rerank import OllamaReranker, SimpleKeywordReranker
 
+RETRIEVAL_MODES = {"bm25", "vector", "hybrid"}
+VECTOR_BACKENDS = {"memory", "milvus"}
 RERANKER_MODES = {"disabled", "keyword", "ollama"}
 TIMING_KEYS = ("keyword_ms", "vector_ms", "fusion_ms", "rerank_ms", "total_ms")
 
@@ -25,11 +28,20 @@ def build_retriever(
     sample_dir: Path,
     *,
     top_k: int = 5,
+    retrieval_mode: str = "bm25",
+    vector_backend: str = "memory",
+    embedding_model: str = "",
+    milvus_uri: str = "",
+    milvus_collection: str = "insight_eval_chunks",
     reranker_mode: str = "disabled",
     reranker_model: str = "",
     ollama_base_url: str = "http://localhost:11434",
     request_timeout_seconds: float = 60,
 ) -> HybridRetriever:
+    if retrieval_mode not in RETRIEVAL_MODES:
+        raise ValueError(f"retrieval mode must be one of: {', '.join(sorted(RETRIEVAL_MODES))}")
+    if vector_backend not in VECTOR_BACKENDS:
+        raise ValueError(f"vector backend must be one of: {', '.join(sorted(VECTOR_BACKENDS))}")
     if reranker_mode not in RERANKER_MODES:
         raise ValueError(f"reranker mode must be one of: {', '.join(sorted(RERANKER_MODES))}")
     if top_k < 1:
@@ -57,25 +69,49 @@ def build_retriever(
             )
     index = BM25Index()
     index.build(chunks)
+    needs_vector = retrieval_mode != "bm25"
+    if needs_vector:
+        embedding_model = embedding_model.strip() or os.getenv("EMBEDDING_MODEL", "").strip()
+        if not embedding_model:
+            raise ValueError("vector or hybrid mode requires --embedding-model or EMBEDDING_MODEL")
+        if vector_backend == "milvus" and not milvus_uri.strip():
+            raise ValueError("milvus vector backend requires --milvus-uri or MILVUS_URI")
+
+    needs_ollama = needs_vector or reranker_mode == "ollama"
+    ollama = None
+    vector_store = None
+    if needs_ollama:
+        ollama = OllamaClient(
+            ollama_base_url,
+            os.getenv("LLM_MODEL", "llama3.2:3b"),
+            embedding_model or os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+            request_timeout_seconds,
+        )
+    if needs_vector:
+        vector_store = (
+            InMemoryVectorStore()
+            if vector_backend == "memory"
+            else MilvusVectorStore(milvus_uri, milvus_collection)
+        )
+        vectors = [ollama.embed(chunk.text) for chunk in chunks]
+        vector_store.upsert(chunks, vectors)
+
     reranker = None
     if reranker_mode == "keyword":
         reranker = SimpleKeywordReranker()
     elif reranker_mode == "ollama":
         if not reranker_model.strip():
             raise ValueError("ollama reranker mode requires --reranker-model or RERANKER_MODEL")
-        client = OllamaClient(
-            ollama_base_url,
-            os.getenv("LLM_MODEL", "llama3.2:3b"),
-            os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
-            request_timeout_seconds,
-        )
-        reranker = OllamaReranker(client, reranker_model)
+        reranker = OllamaReranker(ollama, reranker_model)
     return HybridRetriever(
         index,
+        ollama if needs_vector else None,
+        vector_store,
         top_k=top_k,
         candidate_k=max(20, top_k),
         score_threshold=0.001,
         reranker=reranker,
+        keyword_enabled=retrieval_mode != "vector",
     )
 
 
@@ -93,14 +129,27 @@ def evaluate(
     question_file: Path,
     top_k: int = 5,
     *,
+    retrieval_mode: str = "bm25",
+    vector_backend: str = "memory",
+    embedding_model: str = "",
+    milvus_uri: str = "",
+    milvus_collection: str = "insight_eval_chunks",
     reranker_mode: str = "disabled",
     reranker_model: str = "",
     ollama_base_url: str = "http://localhost:11434",
     request_timeout_seconds: float = 60,
 ) -> dict:
+    effective_embedding_model = (embedding_model.strip() if retrieval_mode != "bm25" else "") or (
+        os.getenv("EMBEDDING_MODEL", "").strip() if retrieval_mode != "bm25" else ""
+    )
     retriever = build_retriever(
         sample_dir,
         top_k=top_k,
+        retrieval_mode=retrieval_mode,
+        vector_backend=vector_backend,
+        embedding_model=effective_embedding_model,
+        milvus_uri=milvus_uri,
+        milvus_collection=milvus_collection,
         reranker_mode=reranker_mode,
         reranker_model=reranker_model,
         ollama_base_url=ollama_base_url,
@@ -153,21 +202,31 @@ def evaluate(
     return {
         "evaluated_at": datetime.now(UTC).isoformat(),
         "profile": reranker_mode,
+        "retrieval_mode": retrieval_mode,
         "models": {
             "llm": os.getenv("LLM_MODEL", "not_used"),
-            "embedding": os.getenv("EMBEDDING_MODEL", "not_used"),
+            "embedding": effective_embedding_model if retrieval_mode != "bm25" else "not_used",
             "reranker": reranker_model or "not_used",
         },
         "parameters": {
             "top_k": top_k,
+            "retrieval_mode": retrieval_mode,
+            "vector_backend": vector_backend if retrieval_mode != "bm25" else None,
+            "embedding_model": effective_embedding_model if retrieval_mode != "bm25" else None,
+            "milvus_uri": milvus_uri
+            if retrieval_mode != "bm25" and vector_backend == "milvus"
+            else None,
+            "milvus_collection": milvus_collection if retrieval_mode != "bm25" else None,
             "reranker_mode": reranker_mode,
             "reranker_model": reranker_model or None,
-            "ollama_base_url": ollama_base_url if reranker_mode == "ollama" else None,
+            "ollama_base_url": ollama_base_url
+            if retrieval_mode != "bm25" or reranker_mode == "ollama"
+            else None,
             "request_timeout_seconds": request_timeout_seconds,
             "retriever": (
                 "bm25-only local baseline"
-                if reranker_mode == "disabled"
-                else f"bm25+{reranker_mode}"
+                if retrieval_mode == "bm25" and reranker_mode == "disabled"
+                else f"{retrieval_mode}+{reranker_mode}"
             ),
         },
         "dataset": str(question_file),
@@ -202,6 +261,18 @@ def main() -> None:
     parser.add_argument("--samples", type=Path, default=Path("data/sample_docs"))
     parser.add_argument("--questions", type=Path, default=Path("data/eval_questions.json"))
     parser.add_argument("--top-k", type=_positive_int, default=5)
+    parser.add_argument("--retrieval-mode", choices=sorted(RETRIEVAL_MODES), default="bm25")
+    parser.add_argument(
+        "--vector-backend",
+        choices=sorted(VECTOR_BACKENDS),
+        default=os.getenv("VECTOR_BACKEND", "memory"),
+    )
+    parser.add_argument("--embedding-model", default=os.getenv("EMBEDDING_MODEL", ""))
+    parser.add_argument("--milvus-uri", default=os.getenv("MILVUS_URI", ""))
+    parser.add_argument(
+        "--milvus-collection",
+        default=os.getenv("MILVUS_COLLECTION", "insight_eval_chunks"),
+    )
     parser.add_argument("--reranker-mode", choices=sorted(RERANKER_MODES), default="disabled")
     parser.add_argument("--reranker-model", default=os.getenv("RERANKER_MODEL", ""))
     parser.add_argument(
@@ -219,6 +290,11 @@ def main() -> None:
             args.samples,
             args.questions,
             args.top_k,
+            retrieval_mode=args.retrieval_mode,
+            vector_backend=args.vector_backend,
+            embedding_model=args.embedding_model,
+            milvus_uri=args.milvus_uri,
+            milvus_collection=args.milvus_collection,
             reranker_mode=args.reranker_mode,
             reranker_model=args.reranker_model,
             ollama_base_url=args.ollama_base_url,

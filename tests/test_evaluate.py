@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+import scripts.evaluate as evaluation
 from scripts.evaluate import evaluate
 
 
@@ -49,3 +50,47 @@ def test_ollama_profile_requires_a_model(tmp_path):
     samples, questions = make_eval_files(tmp_path)
     with pytest.raises(ValueError, match="requires"):
         evaluate(samples, questions, reranker_mode="ollama")
+
+
+def test_vector_profile_uses_memory_backend_and_reports_timings(tmp_path, monkeypatch):
+    samples, questions = make_eval_files(tmp_path)
+
+    class FakeOllama:
+        def __init__(self, *_args):
+            pass
+
+        def embed(self, text):
+            return [float(text.count("台风")), float(text.count("暴雨")), 1.0]
+
+    monkeypatch.setattr(evaluation, "OllamaClient", FakeOllama)
+    result = evaluate(
+        samples,
+        questions,
+        retrieval_mode="vector",
+        vector_backend="memory",
+        embedding_model="fake-embedding",
+    )
+    assert result["retrieval_mode"] == "vector"
+    assert result["parameters"]["vector_backend"] == "memory"
+    assert result["models"]["embedding"] == "fake-embedding"
+    assert result["average_stage_latency_ms"]["keyword_ms"] is None
+    assert result["average_stage_latency_ms"]["vector_ms"] is not None
+    assert result["rows"][0]["stage_status"]["keyword"] == "disabled"
+
+
+def test_vector_profile_requires_embedding_model(tmp_path):
+    samples, questions = make_eval_files(tmp_path)
+    with pytest.raises(ValueError, match="embedding"):
+        evaluate(samples, questions, retrieval_mode="vector", vector_backend="memory")
+
+
+def test_milvus_profile_requires_uri(tmp_path):
+    samples, questions = make_eval_files(tmp_path)
+    with pytest.raises(ValueError, match="milvus"):
+        evaluate(
+            samples,
+            questions,
+            retrieval_mode="hybrid",
+            vector_backend="milvus",
+            embedding_model="fake-embedding",
+        )

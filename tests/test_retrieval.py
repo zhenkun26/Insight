@@ -53,6 +53,48 @@ def test_hybrid_fuses_and_deduplicates():
     assert retriever.last_timings["total_ms"] is not None
 
 
+def test_retrieval_modes_control_keyword_and_vector_paths():
+    class CountingBM25(BM25Index):
+        calls = 0
+
+        def search(self, *args, **kwargs):
+            self.calls += 1
+            return super().search(*args, **kwargs)
+
+    index = CountingBM25()
+    index.build(chunks())
+    embeddings = FakeEmbedding()
+    vectors = InMemoryVectorStore()
+    vectors.upsert(chunks(), [embeddings.embed(item.text) for item in chunks()])
+
+    bm25 = HybridRetriever(index, top_k=2, score_threshold=0.001)
+    assert bm25.search("台风")
+    assert index.calls == 1
+    assert bm25.last_status["keyword"] == "ok"
+    assert bm25.last_status["vector"] == "disabled"
+
+    index.calls = 0
+    vector = HybridRetriever(
+        index,
+        embeddings,
+        vectors,
+        top_k=2,
+        score_threshold=0.001,
+        keyword_enabled=False,
+    )
+    results = vector.search("台风")
+    assert results and results[0].vector_score is not None
+    assert index.calls == 0
+    assert vector.last_status["keyword"] == "disabled"
+    assert vector.last_timings["keyword_ms"] is None
+
+    index.calls = 0
+    hybrid = HybridRetriever(index, embeddings, vectors, top_k=2, score_threshold=0.001)
+    assert hybrid.search("台风")
+    assert index.calls == 1
+    assert hybrid.last_status["vector"] == "ok"
+
+
 def test_hybrid_marks_disabled_stage_timings_as_none():
     index = BM25Index()
     index.build(chunks())

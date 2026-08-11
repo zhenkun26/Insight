@@ -18,6 +18,7 @@ class HybridRetriever:
         score_threshold: float = 0.01,
         rrf_k: int = 60,
         reranker: Reranker | None = None,
+        keyword_enabled: bool = True,
     ):
         self.bm25 = bm25
         self.embeddings = embeddings
@@ -27,6 +28,7 @@ class HybridRetriever:
         self.score_threshold = score_threshold
         self.rrf_k = rrf_k
         self.reranker = reranker
+        self.keyword_enabled = keyword_enabled
         self.last_status: dict[str, str] = {}
         self.last_timings: dict[str, float | None] = {
             "keyword_ms": None,
@@ -53,16 +55,22 @@ class HybridRetriever:
             "total_ms": None,
         }
         if not query.strip():
-            self.last_status = {"keyword": "disabled", "vector": "disabled", "rerank": "disabled"}
+            self.last_status = {
+                "keyword": "disabled",
+                "vector": "disabled",
+                "rerank": "disabled",
+            }
             self.last_timings["total_ms"] = (time.perf_counter() - started) * 1000
             return []
         limit = top_k or self.top_k
-        keyword_started = time.perf_counter()
-        keyword_results = self.bm25.search(query, self.candidate_k, allowed_chunk_ids)
-        self.last_timings["keyword_ms"] = (time.perf_counter() - keyword_started) * 1000
+        keyword_results: list[RetrievalResult] = []
+        if self.keyword_enabled:
+            keyword_started = time.perf_counter()
+            keyword_results = self.bm25.search(query, self.candidate_k, allowed_chunk_ids)
+            self.last_timings["keyword_ms"] = (time.perf_counter() - keyword_started) * 1000
         vector_results: list[RetrievalResult] = []
         self.last_status = {
-            "keyword": "ok",
+            "keyword": "ok" if self.keyword_enabled else "disabled",
             "vector": "disabled" if not (self.embeddings and self.vector_store) else "ok",
         }
         if self.embeddings and self.vector_store:
