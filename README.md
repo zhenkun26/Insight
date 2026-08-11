@@ -1,15 +1,16 @@
-# 洞察者 Insight
+# Insight
 
 [![CI](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml/badge.svg)](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml)
 
+Insight 是一个面向气象业务资料的 local-first RAG 应用。它支持在本地导入 PDF、Markdown 和 TXT 资料，使用 BM25 与向量检索进行混合召回，并返回带来源引用的问答结果。项目自带的气象资料为参考样例，用于验证检索与问答链路。
 
-洞察者 Insight 是一个面向气象业务资料的 local-first RAG 应用示例。它支持在本地导入 PDF、Markdown 和 TXT 资料，使用 BM25 与向量检索进行混合召回，并返回带来源引用的问答结果。项目自带的气象资料均为合成演示内容，不代表任何官方业务规范。
+Insight is a local-first RAG application for meteorological operational documents. It imports PDF, Markdown, and TXT files locally, performs hybrid retrieval with BM25 and vector search, and returns answers with source citations. The bundled meteorological documents are reference samples for verifying the retrieval and QA pipeline.
 
-## 使用场景
+## 功能概览
 
 - 在本地检索观测说明、预警信号说明和数据处理流程。
-- 观察关键词检索、语义检索、RRF 融合和可选重排序的完整链路。
-- 在没有可靠证据时返回拒答，而不是让模型自由补充事实。
+- 关键词检索、语义检索、RRF 融合与可选重排序构成的混合召回链路。
+- 证据不足时明确拒答，避免模型自由补充事实。
 
 ## 架构
 
@@ -45,7 +46,7 @@ flowchart LR
 - 文档支持来源/标签过滤，搜索支持分页；问答支持可选会话上下文和 SSE 事件流。
 - RAG 工作流返回 query analysis、retrieval、rerank、relevance check、generation/fallback 阶段信息。
 - 评估脚本输出实际运行得到的 hit rate、MRR、拒答准确性和平均延迟；README 不预填性能指标。
-- 内置无 Node 依赖的本地 Web Console，可直接完成资料导入、混合检索和流式问答演示。
+- 内置无 Node 依赖的本地 Web Console，可直接完成资料导入、混合检索和流式问答。
 
 ## 技术栈
 
@@ -65,7 +66,7 @@ app/
 ├── web/          # dependency-free local browser console
 └── workflows/    # explicit RAG stage state
 data/
-├── sample_docs/  # synthetic demo documents
+├── sample_docs/  # reference sample documents
 └── uploads/      # local runtime uploads
 scripts/evaluate.py
 tests/
@@ -86,11 +87,11 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-启动后打开 [http://localhost:8000/](http://localhost:8000/)，即可使用本地 Web Console。页面不需要 Node.js、前端构建命令或外部 CDN；它与 FastAPI 使用同源请求，上传后会自动轮询索引任务，并在问答区展示 SSE 片段、来源和阶段状态。也可以继续使用 `/docs` 查看完整 API。
+启动后打开 [http://localhost:8000/](http://localhost:8000/)，即可使用本地 Web Console。页面不需要 Node.js、前端构建工具或外部 CDN；它与 FastAPI 使用同源请求，上传后自动轮询索引任务，并在问答区展示 SSE 片段、来源和阶段状态。也可以使用 `/docs` 查看完整 API。
 
-如果不安装或不启动外部模型，应用仍可以启动并使用关键词检索；问答和向量召回会根据依赖状态返回明确结果。
+不安装或不启动外部模型时，应用仍可启动并使用关键词检索；问答和向量召回会根据依赖状态返回明确结果。
 
-完整版本的上传和重建索引默认返回后台任务，不阻塞 HTTP 请求。可通过 `/jobs/{job_id}` 轮询状态；进程重启后未完成的任务会被标记为可重试失败。
+上传和重建索引默认返回后台任务，不阻塞 HTTP 请求。可通过 `/jobs/{job_id}` 轮询状态；进程重启后未完成的任务会被标记为可重试失败。
 
 ## Ollama 模型准备
 
@@ -101,7 +102,7 @@ ollama pull llama3.2:3b
 ollama pull nomic-embed-text
 ```
 
-通过 `.env` 配置 `LLM_BASE_URL`、`LLM_MODEL` 和 `EMBEDDING_MODEL`。模型名称、地址、Top-K、阈值和超时都不写死在业务代码中。
+通过 `.env` 配置 `LLM_BASE_URL`、`LLM_MODEL` 和 `EMBEDDING_MODEL`。模型名称、地址、Top-K、阈值和超时均通过配置注入，不硬编码在业务逻辑中。
 
 ### 可选扫描 PDF OCR
 
@@ -125,7 +126,7 @@ OCR_TIMEOUT_SECONDS=30
 OCR_TEMP_DIR=
 ```
 
-OCR 默认关闭，不会影响普通 PDF、Markdown 和 TXT。启用后系统仅 OCR 文本层为空的 PDF 页面；工具缺失、超时或命令失败会让索引任务失败并返回 `ocr_unavailable`、`ocr_timeout` 或 `ocr_failed` 语义。启用 OCR 后建议对已有扫描资料执行一次重建索引。Docker 镜像不会强制安装这些系统工具，需自行制作带 OCR 运行时的镜像。
+OCR 默认关闭，不会影响普通 PDF、Markdown 和 TXT。启用后系统仅 OCR 文本层为空的 PDF 页面；工具缺失、超时或命令失败会让索引任务失败并返回 `ocr_unavailable`、`ocr_timeout` 或 `ocr_failed` 语义。启用 OCR 后建议对已有扫描资料执行一次重建索引。Docker 镜像不预装这些系统工具，需自行制作带 OCR 运行时的镜像。
 
 ## Milvus
 
@@ -161,7 +162,7 @@ curl -X POST http://localhost:8000/jobs/<job_id>/cancel
 # 更新来源和标签
 curl -X PATCH http://localhost:8000/documents/<document_id>/metadata \
   -H 'Content-Type: application/json' \
-  -d '{"source":"demo","tags":["typhoon"],"description":"synthetic demo"}'
+  -d '{"source":"reference","tags":["typhoon"],"description":"typhoon warning procedures"}'
 ```
 
 ## 搜索与问答
@@ -186,10 +187,11 @@ curl -N -X POST http://localhost:8000/chat/stream \
   -d '{"query":"台风预警信号分为几级？","session_id":"demo-session"}'
 ```
 
-问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回“当前知识库中没有足够信息”语义的拒答。
-完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。queued 索引任务可以取消，running 任务不会被强制终止。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
+问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回"当前知识库中没有足够信息"语义的拒答。
 
-`/search` 的 `stages` 会返回 `keyword`、`vector`、`fusion`、`rerank` 和 `retrieval` 五个阶段。每项包含 `status` 与 `latency_ms`；未启用阶段的耗时为 `null`，向量或模型异常时会显示已有的 `fallback:<异常类别>` 状态。控制台会在检索结果上方展示这些阶段信息。
+完整响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。排队中的索引任务可以取消，运行中任务不会被强制终止。会话历史仅辅助当前问题理解，不替代当前轮次的检索证据。
+
+`/search` 的 `stages` 返回 `keyword`、`vector`、`fusion`、`rerank` 和 `retrieval` 五个阶段。每项包含 `status` 与 `latency_ms`；未启用阶段的耗时为 `null`，向量或模型异常时会显示已有的 `fallback:<异常类别>` 状态。控制台在检索结果上方展示这些阶段信息。
 
 ### 可选模型重排
 
@@ -201,7 +203,7 @@ RERANKER_MODEL=<本地重排模型名>
 CANDIDATE_K=20
 ```
 
-系统要求模型只返回 `0..1` 的单个数字；模型不可用、超时或输出无法解析时，会保留重排前的 RRF 顺序，并在 `retrieval_status.rerank` 中记录 `fallback`。模型重排按候选逐条调用 Ollama，可能增加延迟，建议从较小的 `CANDIDATE_K` 开始。清空 `RERANKER_MODEL` 可回退到不需要模型的确定性关键词重排。
+系统要求模型只返回 `0..1` 的单个数字；模型不可用、超时或输出无法解析时，保留重排前的 RRF 顺序，并在 `retrieval_status.rerank` 中记录 `fallback`。模型重排按候选逐条调用 Ollama，可能增加延迟，建议从较小的 `CANDIDATE_K` 开始。清空 `RERANKER_MODEL` 可回退到不需要模型的确定性关键词重排。
 
 ## 测试
 
@@ -211,7 +213,7 @@ ruff check app tests scripts
 python -c "from app.main import app; print(app.title)"
 ```
 
-默认测试不连接真实 Ollama、Milvus 或外部 API。API 测试在安装完整依赖后执行；如果 FastAPI 尚未安装，相关测试会被标记为 skipped，而不是伪造通过。
+默认测试不连接真实 Ollama、Milvus 或外部 API。API 测试在安装完整依赖后执行；如果 FastAPI 尚未安装，相关测试会被标记为 skipped，不会伪造通过。
 
 ## 评估
 
@@ -259,24 +261,24 @@ python scripts/evaluate.py \
   --output /tmp/insight-eval-hybrid.json
 ```
 
-输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `refusal_calibration`（阈值、拒答样例数、误报回答数、误报率）、`retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。向量分数会归一化到 `[0, 1]`；`VECTOR_SCORE_THRESHOLD` 默认 `0.7`，在向量/混合检索中于 RRF 前过滤弱候选，`SCORE_THRESHOLD` 仍用于融合结果。可以使用同一问题集重复运行不同阈值，比较 `hit_rate`/`mrr` 与 `refusal_calibration.false_positive_rate`；BM25 默认模式不启用向量阈值。其中 `null` 表示阶段或指标不适用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
+输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `refusal_calibration`（阈值、拒答样例数、误报回答数、误报率）、`retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。向量分数会归一化到 `[0, 1]`；`VECTOR_SCORE_THRESHOLD` 默认 `0.7`，在向量/混合检索中于 RRF 前过滤弱候选，`SCORE_THRESHOLD` 仍用于融合结果。可以使用同一问题集重复运行不同阈值，比较 `hit_rate`/`mrr` 与 `refusal_calibration.false_positive_rate`；BM25 默认模式不启用向量阈值。`null` 表示阶段或指标不适用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。本项目不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
 
 ## 已知限制
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
-- 扫描 PDF OCR 是可选能力，需要本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
+- 扫描 PDF OCR 依赖本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
 - 向量评估需要本地 Ollama Embedding；Milvus Lite 评估会写入指定 URI，重复实验应使用新的 collection 或临时数据库文件。不同 embedding 模型的分数分布可能不同，需要通过 `VECTOR_SCORE_THRESHOLD` 做本地校准；默认值不是准确率保证。
-- 当前没有用户认证、权限控制、会话列表和多租户能力。
-- Web Console 是面向本地单用户的轻量演示层，不提供认证、权限、会话列表或复杂文档管理能力。
-- 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
+
+- Web Console 面向本地单用户场景，不提供认证、权限、会话列表或复杂文档管理功能。
+- 索引任务由单进程本地 worker 执行，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
 - 原生流式效果取决于 Ollama 服务和模型；流式连接异常时会退化为完整回答事件。
-- Rerank 目前是可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。
-- 合成演示资料不能替代正式气象业务规范。
+- Rerank 目前作为可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。
+- 附带的气象资料为参考样例，不能替代正式气象业务规范。
 
-## 后续规划
+## 路线图
 
-- 增加 OCR 和更稳健的章节识别。
+- 增强 OCR 和更稳健的章节识别。
 - 增加可选 LangGraph 状态图和节点级追踪。
 - 增加真实公开资料的许可与来源管理。
 - 增加可选的跨编码器 Rerank 和更系统的离线评估集。
