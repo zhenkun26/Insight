@@ -20,7 +20,7 @@ from app.services.ingestion import IngestionService
 from app.services.jobs import IndexJobService
 from app.services.ollama import OllamaClient
 from app.services.qa import QuestionAnsweringService
-from app.services.rerank import SimpleKeywordReranker
+from app.services.rerank import OllamaReranker, SimpleKeywordReranker
 from app.services.session import SessionService
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -45,7 +45,12 @@ def build_services(config: Settings = settings) -> AppServices:
             vector_store = MilvusVectorStore(config.milvus_uri, config.milvus_collection)
         except Exception:
             vector_store = None
-    reranker = SimpleKeywordReranker() if config.enable_rerank else None
+    if not config.enable_rerank:
+        reranker = None
+    elif config.reranker_model:
+        reranker = OllamaReranker(ollama, config.reranker_model)
+    else:
+        reranker = SimpleKeywordReranker()
     retriever = HybridRetriever(
         bm25,
         ollama if vector_store else None,

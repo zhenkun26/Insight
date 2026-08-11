@@ -15,6 +15,7 @@ from app.services.catalog import DocumentCatalog
 from app.services.ingestion import IngestionService
 from app.services.jobs import IndexJobService
 from app.services.qa import REFUSAL_ANSWER, QuestionAnsweringService
+from app.services.rerank import OllamaReranker, SimpleKeywordReranker
 from app.services.session import SessionService
 
 
@@ -34,6 +35,37 @@ def test_catalog_metadata_and_session_cleanup(tmp_path):
     assert len(session.history("session-1")) == 2
     assert session.delete("session-1")
     assert session.history("session-1") == []
+
+
+def test_reranker_factory_respects_model_configuration(tmp_path):
+    def make_config(**overrides):
+        return Settings(
+            database_path=str(tmp_path / f"{overrides.get('name', 'default')}.db"),
+            bm25_index_path=str(tmp_path / f"{overrides.get('name', 'default')}.json"),
+            upload_dir=str(tmp_path / f"{overrides.get('name', 'default')}-uploads"),
+            milvus_uri="",
+            enable_rerank=overrides.get("enable_rerank", False),
+            reranker_model=overrides.get("reranker_model", ""),
+        )
+
+    cases = [
+        (make_config(name="disabled"), None),
+        (make_config(name="keyword", enable_rerank=True), SimpleKeywordReranker),
+        (make_config(name="model", enable_rerank=True, reranker_model="rerank"), OllamaReranker),
+    ]
+    services = []
+    try:
+        for config, expected in cases:
+            built = build_services(config)
+            services.append(built)
+            assert (
+                isinstance(built.retriever.reranker, expected)
+                if expected
+                else built.retriever.reranker is None
+            )
+    finally:
+        for built in services:
+            built.job_service.close()
 
 
 def test_hybrid_filters_and_offset():

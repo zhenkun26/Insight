@@ -38,6 +38,7 @@ flowchart LR
 - PDF 页码、Markdown 标题和文本块元数据保留。
 - 可选扫描 PDF OCR：默认关闭，启用后只处理没有文本层的页面。
 - BM25 + 向量召回、RRF 融合、Top-K、阈值和可选 Rerank。
+- 可选 Ollama 模型重排：设置 `RERANKER_MODEL` 后按候选片段评分；模型失败自动保留 RRF 顺序。
 - `/chat`、`/chat/stream`、`/search`、文档管理和 `/health`。
 - Ollama、Milvus 和 Rerank 均通过 adapter 隔离，测试可使用 fake/mock。
 - 索引任务支持后台执行、状态轮询、失败重试、内容指纹幂等和模型版本变更提示。
@@ -187,6 +188,18 @@ curl -N -X POST http://localhost:8000/chat/stream \
 
 问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回“当前知识库中没有足够信息”语义的拒答。
 完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。queued 索引任务可以取消，running 任务不会被强制终止。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
+
+### 可选模型重排
+
+默认不调用重排模型。需要使用本地 Ollama 对混合召回候选进行相关性评分时，设置：
+
+```dotenv
+ENABLE_RERANK=true
+RERANKER_MODEL=<本地重排模型名>
+CANDIDATE_K=20
+```
+
+系统要求模型只返回 `0..1` 的单个数字；模型不可用、超时或输出无法解析时，会保留重排前的 RRF 顺序，并在 `retrieval_status.rerank` 中记录 `fallback`。模型重排按候选逐条调用 Ollama，可能增加延迟，建议从较小的 `CANDIDATE_K` 开始。清空 `RERANKER_MODEL` 可回退到不需要模型的确定性关键词重排。
 
 ## 测试
 

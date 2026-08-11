@@ -27,10 +27,15 @@ class OllamaClient:
             raise ValueError("Ollama returned an invalid embedding")
         return [float(value) for value in vector]
 
-    def generate(self, prompt: str, system: str) -> str:
+    def generate(self, prompt: str, system: str, model: str | None = None) -> str:
         response = httpx.post(
             f"{self.base_url}/api/generate",
-            json={"model": self.llm_model, "system": system, "prompt": prompt, "stream": False},
+            json={
+                "model": model or self.llm_model,
+                "system": system,
+                "prompt": prompt,
+                "stream": False,
+            },
             timeout=self.timeout,
         )
         response.raise_for_status()
