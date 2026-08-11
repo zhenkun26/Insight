@@ -33,6 +33,7 @@ class Settings:
     top_k: int = int(os.getenv("TOP_K", "5"))
     candidate_k: int = int(os.getenv("CANDIDATE_K", "20"))
     score_threshold: float = float(os.getenv("SCORE_THRESHOLD", "0.01"))
+    vector_score_threshold: float = float(os.getenv("VECTOR_SCORE_THRESHOLD", "0.7"))
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
     rrf_k: int = int(os.getenv("RRF_K", "60"))
@@ -51,6 +52,8 @@ class Settings:
     ocr_temp_dir: str | None = os.getenv("OCR_TEMP_DIR") or None
 
     def __post_init__(self) -> None:
+        if not 0 <= self.vector_score_threshold <= 1:
+            raise ValueError("VECTOR_SCORE_THRESHOLD must be between zero and one")
         if self.ocr_enabled and self.ocr_timeout_seconds <= 0:
             raise ValueError("OCR_TIMEOUT_SECONDS must be greater than zero when OCR is enabled")
         if self.ocr_enabled and not self.ocr_language.strip():

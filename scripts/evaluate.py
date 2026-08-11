@@ -22,6 +22,22 @@ RETRIEVAL_MODES = {"bm25", "vector", "hybrid"}
 VECTOR_BACKENDS = {"memory", "milvus"}
 RERANKER_MODES = {"disabled", "keyword", "ollama"}
 TIMING_KEYS = ("keyword_ms", "vector_ms", "fusion_ms", "rerank_ms", "total_ms")
+DEFAULT_VECTOR_SCORE_THRESHOLD = 0.7
+
+
+def _effective_vector_score_threshold(
+    retrieval_mode: str, configured: float | None
+) -> float | None:
+    if retrieval_mode == "bm25":
+        return None
+    value = (
+        configured
+        if configured is not None
+        else float(os.getenv("VECTOR_SCORE_THRESHOLD", str(DEFAULT_VECTOR_SCORE_THRESHOLD)))
+    )
+    if not 0 <= value <= 1:
+        raise ValueError("vector score threshold must be between zero and one")
+    return value
 
 
 def build_retriever(
@@ -37,6 +53,7 @@ def build_retriever(
     reranker_model: str = "",
     ollama_base_url: str = "http://localhost:11434",
     request_timeout_seconds: float = 60,
+    vector_score_threshold: float | None = None,
 ) -> HybridRetriever:
     if retrieval_mode not in RETRIEVAL_MODES:
         raise ValueError(f"retrieval mode must be one of: {', '.join(sorted(RETRIEVAL_MODES))}")
@@ -48,6 +65,8 @@ def build_retriever(
         raise ValueError("top_k must be greater than zero")
     if request_timeout_seconds <= 0:
         raise ValueError("request timeout must be greater than zero")
+    if vector_score_threshold is not None and not 0 <= vector_score_threshold <= 1:
+        raise ValueError("vector score threshold must be between zero and one")
 
     chunks: list[Chunk] = []
     for path in sorted(sample_dir.iterdir()):
@@ -70,6 +89,9 @@ def build_retriever(
     index = BM25Index()
     index.build(chunks)
     needs_vector = retrieval_mode != "bm25"
+    effective_vector_score_threshold = _effective_vector_score_threshold(
+        retrieval_mode, vector_score_threshold
+    )
     if needs_vector:
         embedding_model = embedding_model.strip() or os.getenv("EMBEDDING_MODEL", "").strip()
         if not embedding_model:
@@ -112,6 +134,7 @@ def build_retriever(
         score_threshold=0.001,
         reranker=reranker,
         keyword_enabled=retrieval_mode != "vector",
+        vector_score_threshold=effective_vector_score_threshold if needs_vector else None,
     )
 
 
@@ -138,9 +161,13 @@ def evaluate(
     reranker_model: str = "",
     ollama_base_url: str = "http://localhost:11434",
     request_timeout_seconds: float = 60,
+    vector_score_threshold: float | None = None,
 ) -> dict:
     effective_embedding_model = (embedding_model.strip() if retrieval_mode != "bm25" else "") or (
         os.getenv("EMBEDDING_MODEL", "").strip() if retrieval_mode != "bm25" else ""
+    )
+    effective_vector_threshold = _effective_vector_score_threshold(
+        retrieval_mode, vector_score_threshold
     )
     retriever = build_retriever(
         sample_dir,
@@ -154,11 +181,13 @@ def evaluate(
         reranker_model=reranker_model,
         ollama_base_url=ollama_base_url,
         request_timeout_seconds=request_timeout_seconds,
+        vector_score_threshold=vector_score_threshold,
     )
     questions = json.loads(question_file.read_text(encoding="utf-8"))
     hits = 0
     refusal_hits = 0
     refusal_count = 0
+    refusal_false_positives = 0
     reciprocal_ranks: list[float] = []
     latencies: list[float] = []
     rows = []
@@ -172,6 +201,8 @@ def evaluate(
             refusal_count += 1
             if not results:
                 refusal_hits += 1
+            else:
+                refusal_false_positives += 1
         matched_rank = None
         if not should_refuse and expected:
             for rank, result in enumerate(results, 1):
@@ -195,6 +226,7 @@ def evaluate(
                     for key, value in retriever.last_timings.items()
                 },
                 "should_refuse": should_refuse,
+                "refused": not results,
                 "result_count": len(results),
             }
         )
@@ -223,6 +255,7 @@ def evaluate(
             if retrieval_mode != "bm25" or reranker_mode == "ollama"
             else None,
             "request_timeout_seconds": request_timeout_seconds,
+            "vector_score_threshold": (effective_vector_threshold),
             "retriever": (
                 "bm25-only local baseline"
                 if retrieval_mode == "bm25" and reranker_mode == "disabled"
@@ -234,6 +267,14 @@ def evaluate(
         "hit_rate": round(hits / count, 4),
         "mrr": round(sum(reciprocal_ranks) / count, 4),
         "refusal_accuracy": round(refusal_hits / refusal_count, 4) if refusal_count else None,
+        "refusal_calibration": {
+            "threshold": (effective_vector_threshold),
+            "refusal_count": refusal_count,
+            "false_positive_answers": refusal_false_positives,
+            "false_positive_rate": (
+                round(refusal_false_positives / refusal_count, 4) if refusal_count else None
+            ),
+        },
         "average_latency_ms": round(sum(latencies) / count, 3),
         "average_stage_latency_ms": _stage_averages(rows),
         "rows": rows,
@@ -251,6 +292,13 @@ def _positive_float(value: str) -> float:
     parsed = float(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
+def _score_threshold(value: str) -> float:
+    parsed = float(value)
+    if not 0 <= parsed <= 1:
+        raise argparse.ArgumentTypeError("must be between zero and one")
     return parsed
 
 
@@ -283,6 +331,11 @@ def main() -> None:
         type=_positive_float,
         default=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60")),
     )
+    parser.add_argument(
+        "--vector-score-threshold",
+        type=_score_threshold,
+        default=float(os.getenv("VECTOR_SCORE_THRESHOLD", str(DEFAULT_VECTOR_SCORE_THRESHOLD))),
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     try:
@@ -299,6 +352,7 @@ def main() -> None:
             reranker_model=args.reranker_model,
             ollama_base_url=args.ollama_base_url,
             request_timeout_seconds=args.request_timeout_seconds,
+            vector_score_threshold=args.vector_score_threshold,
         )
     except ValueError as exc:
         parser.error(str(exc))

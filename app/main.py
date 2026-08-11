@@ -60,6 +60,8 @@ def build_services(config: Settings = settings) -> AppServices:
         config.score_threshold,
         config.rrf_k,
         reranker,
+        keyword_enabled=True,
+        vector_score_threshold=config.vector_score_threshold,
     )
     ingestion = IngestionService(catalog, config)
 

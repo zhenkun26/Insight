@@ -37,7 +37,7 @@ flowchart LR
 - 文档上传、列表、删除和重建索引。
 - PDF 页码、Markdown 标题和文本块元数据保留。
 - 可选扫描 PDF OCR：默认关闭，启用后只处理没有文本层的页面。
-- BM25 + 向量召回、RRF 融合、Top-K、阈值和可选 Rerank。
+- BM25 + 向量召回、向量分数归一化、RRF 融合、Top-K、双层阈值和可选 Rerank。
 - 可选 Ollama 模型重排：设置 `RERANKER_MODEL` 后按候选片段评分；模型失败自动保留 RRF 顺序。
 - `/chat`、`/chat/stream`、`/search`、文档管理和 `/health`。
 - Ollama、Milvus 和 Rerank 均通过 adapter 隔离，测试可使用 fake/mock。
@@ -244,6 +244,7 @@ python scripts/evaluate.py \
   --vector-backend memory \
   --embedding-model "${EMBEDDING_MODEL:-nomic-embed-text}" \
   --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
+  --vector-score-threshold "${VECTOR_SCORE_THRESHOLD:-0.7}" \
   --output /tmp/insight-eval-vector.json
 
 # 混合检索 + Milvus Lite：URI 和 collection 请按本次实验隔离
@@ -254,17 +255,18 @@ python scripts/evaluate.py \
   --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
   --milvus-uri /tmp/insight-eval-milvus.db \
   --milvus-collection insight_eval_hybrid \
+  --vector-score-threshold "${VECTOR_SCORE_THRESHOLD:-0.7}" \
   --output /tmp/insight-eval-hybrid.json
 ```
 
-输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。其中 `null` 表示阶段未启用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
+输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `refusal_calibration`（阈值、拒答样例数、误报回答数、误报率）、`retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。向量分数会归一化到 `[0, 1]`；`VECTOR_SCORE_THRESHOLD` 默认 `0.7`，在向量/混合检索中于 RRF 前过滤弱候选，`SCORE_THRESHOLD` 仍用于融合结果。可以使用同一问题集重复运行不同阈值，比较 `hit_rate`/`mrr` 与 `refusal_calibration.false_positive_rate`；BM25 默认模式不启用向量阈值。其中 `null` 表示阶段或指标不适用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
 
 ## 已知限制
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
 - 扫描 PDF OCR 是可选能力，需要本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
-- 向量评估需要本地 Ollama Embedding；Milvus Lite 评估会写入指定 URI，重复实验应使用新的 collection 或临时数据库文件。
+- 向量评估需要本地 Ollama Embedding；Milvus Lite 评估会写入指定 URI，重复实验应使用新的 collection 或临时数据库文件。不同 embedding 模型的分数分布可能不同，需要通过 `VECTOR_SCORE_THRESHOLD` 做本地校准；默认值不是准确率保证。
 - 当前没有用户认证、权限控制、会话列表和多租户能力。
 - Web Console 是面向本地单用户的轻量演示层，不提供认证、权限、会话列表或复杂文档管理能力。
 - 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。

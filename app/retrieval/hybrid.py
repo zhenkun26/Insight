@@ -19,6 +19,7 @@ class HybridRetriever:
         rrf_k: int = 60,
         reranker: Reranker | None = None,
         keyword_enabled: bool = True,
+        vector_score_threshold: float | None = None,
     ):
         self.bm25 = bm25
         self.embeddings = embeddings
@@ -29,6 +30,9 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.reranker = reranker
         self.keyword_enabled = keyword_enabled
+        if vector_score_threshold is not None and not 0 <= vector_score_threshold <= 1:
+            raise ValueError("vector score threshold must be between zero and one")
+        self.vector_score_threshold = vector_score_threshold
         self.last_status: dict[str, str] = {}
         self.last_timings: dict[str, float | None] = {
             "keyword_ms": None,
@@ -82,6 +86,13 @@ class HybridRetriever:
             except Exception as exc:
                 self.last_status["vector"] = f"fallback:{exc.__class__.__name__}"
             self.last_timings["vector_ms"] = (time.perf_counter() - vector_started) * 1000
+            if self.vector_score_threshold is not None:
+                vector_results = [
+                    result
+                    for result in vector_results
+                    if (result.vector_score if result.vector_score is not None else result.score)
+                    >= self.vector_score_threshold
+                ]
         fusion_started = time.perf_counter()
         merged: dict[str, RetrievalResult] = {}
         for rank, result in enumerate(keyword_results, 1):

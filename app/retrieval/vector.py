@@ -6,6 +6,14 @@ from collections.abc import Sequence
 from app.models.domain import Chunk, RetrievalResult
 
 
+def normalize_vector_score(score: float) -> float:
+    """Keep backend similarity scores in the public relevance range."""
+    numeric_score = float(score)
+    if not math.isfinite(numeric_score):
+        return 0.0
+    return min(max(numeric_score, 0.0), 1.0)
+
+
 def cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     if not left or not right or len(left) != len(right):
         return 0.0
@@ -30,15 +38,12 @@ class InMemoryVectorStore:
         limit: int,
         allowed_chunk_ids: set[str] | None = None,
     ) -> list[RetrievalResult]:
-        results = [
-            RetrievalResult(
-                chunk,
-                cosine_similarity(vector, item_vector),
-                vector_score=cosine_similarity(vector, item_vector),
-            )
-            for chunk, item_vector in self._items.values()
-            if allowed_chunk_ids is None or chunk.chunk_id in allowed_chunk_ids
-        ]
+        results = []
+        for chunk, item_vector in self._items.values():
+            if allowed_chunk_ids is not None and chunk.chunk_id not in allowed_chunk_ids:
+                continue
+            score = normalize_vector_score(cosine_similarity(vector, item_vector))
+            results.append(RetrievalResult(chunk, score, vector_score=score))
         return sorted(results, key=lambda item: (-item.score, item.chunk.position))[:limit]
 
     def delete_document(self, document_id: str) -> None:
@@ -120,8 +125,8 @@ class MilvusVectorStore:
                     row["entity"].get("filename", ""),
                     row["entity"].get("text", ""),
                 ),
-                float(row["distance"]),
-                vector_score=float(row["distance"]),
+                normalize_vector_score(row["distance"]),
+                vector_score=normalize_vector_score(row["distance"]),
             )
             for row in rows
         ]

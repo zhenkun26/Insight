@@ -4,7 +4,14 @@ import sys
 import types
 
 from app.models.domain import Chunk
-from app.retrieval.vector import MilvusVectorStore
+from app.retrieval.vector import MilvusVectorStore, normalize_vector_score
+
+
+def test_normalize_vector_score_clamps_backend_values():
+    assert normalize_vector_score(-1.0) == 0.0
+    assert normalize_vector_score(0.5) == 0.5
+    assert normalize_vector_score(2.0) == 1.0
+    assert normalize_vector_score(float("nan")) == 0.0
 
 
 def test_milvus_adapter_contract_with_fake_client(monkeypatch):

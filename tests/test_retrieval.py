@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.models.domain import Chunk, RetrievalResult
 from app.retrieval.bm25 import BM25Index
 from app.retrieval.hybrid import HybridRetriever
-from app.retrieval.vector import InMemoryVectorStore
+from app.retrieval.vector import InMemoryVectorStore, normalize_vector_score
 from app.services.rerank import OllamaReranker, SimpleKeywordReranker, parse_rerank_score
 
 
@@ -51,6 +51,42 @@ def test_hybrid_fuses_and_deduplicates():
     assert retriever.last_timings["vector_ms"] is not None
     assert retriever.last_timings["fusion_ms"] is not None
     assert retriever.last_timings["total_ms"] is not None
+
+
+def test_vector_scores_are_normalized_and_thresholded_before_fusion():
+    assert normalize_vector_score(-0.2) == 0.0
+    assert normalize_vector_score(0.8) == 0.8
+    assert normalize_vector_score(1.2) == 1.0
+
+    index = BM25Index()
+    index.build(chunks())
+    embeddings = FakeEmbedding()
+    vectors = InMemoryVectorStore()
+    vectors.upsert(chunks(), [embeddings.embed(item.text) for item in chunks()])
+    retriever = HybridRetriever(
+        index,
+        embeddings,
+        vectors,
+        top_k=2,
+        score_threshold=0.001,
+        keyword_enabled=False,
+        vector_score_threshold=0.8,
+    )
+
+    results = retriever.search("台风")
+    assert [item.chunk.chunk_id for item in results] == ["a"]
+    assert results[0].vector_score is not None and results[0].vector_score > 0.99
+
+
+def test_vector_threshold_rejects_out_of_range_values():
+    index = BM25Index()
+    for invalid in (-0.1, 1.1):
+        try:
+            HybridRetriever(index, vector_score_threshold=invalid)
+        except ValueError as exc:
+            assert "between zero and one" in str(exc)
+        else:
+            raise AssertionError("invalid vector threshold must fail")
 
 
 def test_retrieval_modes_control_keyword_and_vector_paths():
