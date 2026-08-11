@@ -126,6 +126,7 @@ curl -X POST http://localhost:8000/documents/reindex
 # 上传/重建响应中的 job_id
 curl http://localhost:8000/jobs/<job_id>
 curl -X POST http://localhost:8000/jobs/<job_id>/retry
+curl -X POST http://localhost:8000/jobs/<job_id>/cancel
 
 # 更新来源和标签
 curl -X PATCH http://localhost:8000/documents/<document_id>/metadata \
@@ -156,7 +157,7 @@ curl -N -X POST http://localhost:8000/chat/stream \
 ```
 
 问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回“当前知识库中没有足够信息”语义的拒答。
-完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
+完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。queued 索引任务可以取消，running 任务不会被强制终止。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
 
 ## 测试
 
@@ -184,7 +185,7 @@ python scripts/evaluate.py --output data/eval-result.json
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
 - 当前没有用户认证、权限控制、前端界面和多租户能力。
 - 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
-- SSE 第一版保证事件协议和完整结果交付，是否为模型原生 token 流取决于 Ollama adapter 配置。
+- 原生流式效果取决于 Ollama 服务和模型；流式连接异常时会退化为完整回答事件。
 - Rerank 目前是可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。
 - 合成演示资料不能替代正式气象业务规范。
 

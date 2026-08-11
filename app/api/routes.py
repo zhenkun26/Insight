@@ -164,6 +164,17 @@ def create_router(services: AppServices) -> APIRouter:
             raise _api_error(409, "job_not_retryable", "job is not retryable")
         return JobResponse(**job)
 
+    @router.post("/jobs/{job_id}/cancel", response_model=JobResponse)
+    def cancel_job(job_id: str, request: Request) -> JobResponse:
+        if not services.job_service:
+            raise _api_error(409, "jobs_not_configured", "async jobs are not configured")
+        job = services.job_service.cancel(job_id, getattr(request.state, "request_id", None))
+        if job:
+            return JobResponse(**job)
+        if services.catalog.get_job(job_id):
+            raise _api_error(409, "job_not_cancellable", "only queued jobs can be cancelled")
+        raise _api_error(404, "job_not_found", "job not found")
+
     @router.post("/search", response_model=SearchResponse)
     def search(payload: QueryRequest, request: Request) -> SearchResponse:
         started = time.perf_counter()
@@ -222,21 +233,26 @@ def create_router(services: AppServices) -> APIRouter:
         history = (
             services.session_service.history(payload.session_id) if services.session_service else []
         )
-        result = services.qa.answer(payload.query, history=history, trace_id=trace_id)
-        if services.session_service and payload.session_id:
-            services.session_service.append(payload.session_id, "user", payload.query)
-            services.session_service.append(payload.session_id, "assistant", result.answer)
+        events = services.qa.stream_answer(payload.query, history=history, trace_id=trace_id)
 
         def body():
-            yield f"event: start\ndata: {json.dumps({'trace_id': result.trace_id})}\n\n"
-            yield f"event: retrieval\ndata: {json.dumps({'status': result.retrieval_status, 'stages': result.stages}, ensure_ascii=False)}\n\n"
-            for source in result.sources:
-                yield f"event: source\ndata: {json.dumps(_source_response(source, services.catalog).model_dump(), ensure_ascii=False)}\n\n"
-            yield f"event: token\ndata: {json.dumps({'text': result.answer}, ensure_ascii=False)}\n\n"
-            yield f"event: complete\ndata: {json.dumps({'status': result.status})}\n\n"
+            answer = ""
+            for item in events:
+                event_name = item["event"]
+                data = item["data"]
+                if event_name == "source":
+                    data = _source_response(data, services.catalog).model_dump()
+                elif event_name == "token":
+                    answer += data.get("text", "")
+                elif event_name == "complete":
+                    answer = data.get("answer", answer)
+                yield f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+            if services.session_service and payload.session_id:
+                services.session_service.append(payload.session_id, "user", payload.query)
+                services.session_service.append(payload.session_id, "assistant", answer)
 
         return StreamingResponse(
-            body(), media_type="text/event-stream", headers={"x-insight-status": result.status}
+            body(), media_type="text/event-stream", headers={"x-insight-status": "stream"}
         )
 
     @router.delete("/sessions/{session_id}")

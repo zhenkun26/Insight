@@ -1,10 +1,4 @@
-# http-api Specification
-
-## Purpose
-
-通过稳定、可测试的 HTTP 接口提供文档管理、搜索、问答和服务健康状态，使本地应用能够被 CLI、Web UI 或其他客户端复用。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Document management API
 系统 SHALL 提供文档上传、列表、删除和重建索引接口，并对非法文件、未知文档和索引失败返回结构化错误；上传和重建 SHALL 返回可查询的任务标识。

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.models.domain import RetrievalResult, Source
-from app.workflows.state import WorkflowState
+from app.workflows.state import StageEvent, WorkflowState
 
 REFUSAL_ANSWER = "当前知识库中没有足够信息，无法可靠回答该问题。"
 
@@ -105,3 +105,111 @@ class QuestionAnsweringService:
             [event.as_dict() for event in state.events],
             state.retrieval_status,
         )
+
+    def stream_answer(
+        self,
+        query: str,
+        *,
+        history: list[dict[str, str]] | None = None,
+        trace_id: str | None = None,
+    ):
+        """Yield structured events while generating one grounded answer."""
+        started = time.perf_counter()
+        state = WorkflowState(query, trace_id or WorkflowState(query).trace_id, history or [])
+        with state.stage("query_analysis"):
+            normalized_query = " ".join(query.split())[:2000]
+        with state.stage("retrieval"):
+            results = self.retriever.search(normalized_query)
+            state.retrieval_status = dict(getattr(self.retriever, "last_status", {}))
+        with state.stage("rerank"):
+            pass
+        with state.stage("relevance_check"):
+            reliable = [result for result in results if result.score >= self.score_threshold]
+        yield {
+            "event": "start",
+            "data": {
+                "trace_id": state.trace_id,
+                "stream_mode": "native"
+                if callable(getattr(self.llm, "stream_generate", None))
+                else "fallback",
+            },
+        }
+        yield {
+            "event": "retrieval",
+            "data": {
+                "status": state.retrieval_status,
+                "stages": [event.as_dict() for event in state.events],
+            },
+        }
+        for result in reliable:
+            yield {"event": "source", "data": result.chunk.source}
+        if not reliable:
+            with state.stage("fallback"):
+                pass
+            yield {
+                "event": "complete",
+                "data": {
+                    "status": "refused",
+                    "answer": REFUSAL_ANSWER,
+                    "stream_mode": "none",
+                    "first_token_latency_ms": None,
+                    "stages": [event.as_dict() for event in state.events],
+                },
+            }
+            return
+
+        system = "你是洞察者 Insight 的本地知识库助手。只能根据 CONTEXT 回答。若 CONTEXT 没有依据，必须回答当前知识库中没有足够信息。回答末尾必须列出使用的来源编号。不要补充常识或猜测。"
+        history_text = "\n".join(
+            f"{message['role']}: {message['content']}" for message in (history or [])
+        )
+        prompt = f"HISTORY (not evidence):\n{history_text}\n\nCONTEXT:\n{build_context(reliable)}\n\nQUESTION:\n{normalized_query}\n\n请用中文简洁回答，并使用 [1] 这样的来源编号。"
+        stream_method = getattr(self.llm, "stream_generate", None)
+        stream_mode = "native" if callable(stream_method) else "fallback"
+        fragments: list[str] = []
+        first_token_latency_ms: float | None = None
+        generation_started = time.perf_counter()
+
+        try:
+            if callable(stream_method):
+                fragments_iterator = stream_method(prompt, system)
+            else:
+                fragments_iterator = iter([self.llm.generate(prompt, system)])
+            for index, fragment in enumerate(fragments_iterator):
+                if not fragment:
+                    continue
+                if first_token_latency_ms is None:
+                    first_token_latency_ms = (time.perf_counter() - started) * 1000
+                fragments.append(fragment)
+                yield {"event": "token", "data": {"text": fragment, "index": index}}
+            status = "ok"
+        except Exception as exc:
+            if fragments:
+                status = f"stream_error:{exc.__class__.__name__}"
+            else:
+                stream_mode = "fallback"
+                try:
+                    fallback = self.llm.generate(prompt, system)
+                    fragments = [fallback]
+                    first_token_latency_ms = (time.perf_counter() - started) * 1000
+                    yield {"event": "token", "data": {"text": fallback, "index": 0}}
+                    status = "stream_fallback"
+                except Exception as fallback_exc:
+                    status = f"llm_error:{fallback_exc.__class__.__name__}"
+        state.events.append(
+            StageEvent(
+                "generation",
+                "ok" if status in {"ok", "stream_fallback"} else "error",
+                (time.perf_counter() - generation_started) * 1000,
+                status if status != "ok" else None,
+            )
+        )
+        yield {
+            "event": "complete",
+            "data": {
+                "status": status,
+                "answer": "".join(fragments) or "本地模型服务暂时不可用，无法生成回答。",
+                "stream_mode": stream_mode,
+                "first_token_latency_ms": first_token_latency_ms,
+                "stages": [event.as_dict() for event in state.events],
+            },
+        }

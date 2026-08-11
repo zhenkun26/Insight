@@ -22,6 +22,7 @@ class IndexJobService:
         self.settings = settings
         self.executor = ThreadPoolExecutor(max_workers=max(1, settings.job_workers))
         self._lock = threading.Lock()
+        self._futures = {}
         self.catalog.recover_running_jobs()
 
     def submit_upload(self, filename: str, data: bytes, trace_id: str | None = None) -> dict:
@@ -41,7 +42,9 @@ class IndexJobService:
                 finished_at=self._now(),
             )
             return self.catalog.get_job(job["job_id"]) or job
-        self.executor.submit(self._run_upload, job["job_id"], filename, data)
+        future = self.executor.submit(self._run_upload, job["job_id"], filename, data)
+        with self._lock:
+            self._futures[job["job_id"]] = future
         return job
 
     def _run_upload(self, job_id: str, filename: str, data: bytes) -> None:
@@ -69,7 +72,9 @@ class IndexJobService:
 
     def submit_reindex(self, trace_id: str | None = None) -> dict:
         job = self.catalog.create_job("reindex", trace_id=trace_id)
-        self.executor.submit(self._run_reindex, job["job_id"])
+        future = self.executor.submit(self._run_reindex, job["job_id"])
+        with self._lock:
+            self._futures[job["job_id"]] = future
         return job
 
     def _run_reindex(self, job_id: str) -> None:
@@ -120,6 +125,26 @@ class IndexJobService:
         if not path.exists():
             return None
         return self.submit_upload(document["filename"], path.read_bytes(), trace_id)
+
+    def cancel(self, job_id: str, trace_id: str | None = None) -> dict | None:
+        job = self.catalog.get_job(job_id)
+        if not job:
+            return None
+        if job["status"] == "cancelled":
+            return job
+        if job["status"] != "queued":
+            return None
+        with self._lock:
+            future = self._futures.get(job_id)
+            cancelled = future.cancel() if future else False
+        if not cancelled:
+            return None
+        return self.catalog.update_job(
+            job_id,
+            status="cancelled",
+            trace_id=trace_id or job.get("trace_id"),
+            finished_at=self._now(),
+        )
 
     def close(self) -> None:
         self.executor.shutdown(wait=False, cancel_futures=True)

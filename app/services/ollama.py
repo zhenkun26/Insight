@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -37,6 +39,29 @@ class OllamaClient:
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError("Ollama returned an empty answer")
         return answer.strip()
+
+    def stream_generate(self, prompt: str, system: str) -> Iterator[str]:
+        with httpx.stream(
+            "POST",
+            f"{self.base_url}/api/generate",
+            json={"model": self.llm_model, "system": system, "prompt": prompt, "stream": True},
+            timeout=self.timeout,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line:
+                    continue
+                try:
+                    payload: dict[str, Any] = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError("Ollama returned an invalid stream event") from exc
+                fragment = payload.get("response")
+                if fragment is not None and not isinstance(fragment, str):
+                    raise ValueError("Ollama returned an invalid stream fragment")
+                if fragment:
+                    yield fragment
+                if payload.get("done") is True:
+                    break
 
     def health(self) -> str:
         try:
