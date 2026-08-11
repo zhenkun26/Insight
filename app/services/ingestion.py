@@ -26,7 +26,14 @@ class IngestionService:
                 "chunk_count": len(self.catalog.get_chunks(existing["document_id"])),
             }
         document_id = stable_document_id(data)
-        pages = parse_document(filename, data)
+        pages = parse_document(
+            filename,
+            data,
+            ocr_enabled=self.settings.ocr_enabled,
+            ocr_language=self.settings.ocr_language,
+            ocr_timeout_seconds=self.settings.ocr_timeout_seconds,
+            ocr_temp_dir=self.settings.ocr_temp_dir,
+        )
         drafts = chunk_pages(pages, self.settings.chunk_size, self.settings.chunk_overlap)
         chunks = [
             Chunk(

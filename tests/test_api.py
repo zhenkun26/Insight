@@ -56,6 +56,7 @@ def test_health_and_upload(tmp_path):
     health = client.get("/health")
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
+    assert health.json()["dependencies"]["ocr"]["enabled"] is False
     response = client.post(
         "/documents/upload",
         files={"file": ("guide.txt", b"# 4. Testing\nThe document is a demo.", "text/plain")},

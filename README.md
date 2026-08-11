@@ -36,6 +36,7 @@ flowchart LR
 
 - 文档上传、列表、删除和重建索引。
 - PDF 页码、Markdown 标题和文本块元数据保留。
+- 可选扫描 PDF OCR：默认关闭，启用后只处理没有文本层的页面。
 - BM25 + 向量召回、RRF 融合、Top-K、阈值和可选 Rerank。
 - `/chat`、`/chat/stream`、`/search`、文档管理和 `/health`。
 - Ollama、Milvus 和 Rerank 均通过 adapter 隔离，测试可使用 fake/mock。
@@ -100,6 +101,30 @@ ollama pull nomic-embed-text
 ```
 
 通过 `.env` 配置 `LLM_BASE_URL`、`LLM_MODEL` 和 `EMBEDDING_MODEL`。模型名称、地址、Top-K、阈值和超时都不写死在业务代码中。
+
+### 可选扫描 PDF OCR
+
+扫描版 PDF 没有文本层时，可以额外安装本机 OCR 工具并显式开启：
+
+```bash
+# macOS
+brew install poppler tesseract
+
+# Debian/Ubuntu
+sudo apt-get install poppler-utils tesseract-ocr
+```
+
+中文资料还需要安装对应的 Tesseract 语言包，并确保 `pdftoppm`、`tesseract` 位于 `PATH`。在 `.env` 中设置：
+
+```dotenv
+OCR_ENABLED=true
+OCR_LANGUAGE=chi_sim+eng
+OCR_TIMEOUT_SECONDS=30
+# 可选：指定 OCR 临时目录的父目录
+OCR_TEMP_DIR=
+```
+
+OCR 默认关闭，不会影响普通 PDF、Markdown 和 TXT。启用后系统仅 OCR 文本层为空的 PDF 页面；工具缺失、超时或命令失败会让索引任务失败并返回 `ocr_unavailable`、`ocr_timeout` 或 `ocr_failed` 语义。启用 OCR 后建议对已有扫描资料执行一次重建索引。Docker 镜像不会强制安装这些系统工具，需自行制作带 OCR 运行时的镜像。
 
 ## Milvus
 
@@ -186,6 +211,7 @@ python scripts/evaluate.py --output data/eval-result.json
 ## 已知限制
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
+- 扫描 PDF OCR 是可选能力，需要本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
 - 当前没有用户认证、权限控制、会话列表和多租户能力。
 - Web Console 是面向本地单用户的轻量演示层，不提供认证、权限、会话列表或复杂文档管理能力。

@@ -62,10 +62,13 @@ class IndexJobService:
             )
         except Exception as exc:
             logger.exception("index job failed", extra={"job_id": job_id})
+            error = getattr(exc, "error_code", exc.__class__.__name__)
+            if str(exc):
+                error = f"{error}: {exc}"
             self.catalog.update_job(
                 job_id,
                 status="failed",
-                error=exc.__class__.__name__,
+                error=error,
                 retryable=True,
                 finished_at=self._now(),
             )
@@ -90,10 +93,13 @@ class IndexJobService:
             )
         except Exception as exc:
             logger.exception("reindex job failed", extra={"job_id": job_id})
+            error = getattr(exc, "error_code", exc.__class__.__name__)
+            if str(exc):
+                error = f"{error}: {exc}"
             self.catalog.update_job(
                 job_id,
                 status="failed",
-                error=exc.__class__.__name__,
+                error=error,
                 retryable=True,
                 finished_at=self._now(),
             )

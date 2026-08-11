@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.ingestion.ocr import OCRError, runtime_status
 from app.models.domain import RetrievalResult
 from app.schemas.api import (
     ChatResponse,
@@ -74,6 +75,10 @@ def create_router(services: AppServices) -> APIRouter:
                 "ollama": ollama_status,
                 "vector_store": "configured" if services.retriever.vector_store else "keyword_only",
                 "index_jobs": "configured" if services.job_service else "synchronous",
+                "ocr": {
+                    "enabled": getattr(services.settings, "ocr_enabled", False),
+                    "runtime": runtime_status(),
+                },
             },
             "retrieval": services.retriever.last_status,
         }
@@ -94,6 +99,8 @@ def create_router(services: AppServices) -> APIRouter:
             )
         except ValueError as exc:
             raise _api_error(415, "unsupported_document", str(exc)) from exc
+        except OCRError as exc:
+            raise _api_error(503, exc.error_code, str(exc)) from exc
         except Exception as exc:
             raise _api_error(500, "document_indexing_failed", exc.__class__.__name__) from exc
 

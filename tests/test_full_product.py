@@ -6,6 +6,7 @@ from threading import Event
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.ingestion.ocr import OCRUnavailableError
 from app.main import build_services, create_app
 from app.models.domain import Chunk
 from app.retrieval.bm25 import BM25Index
@@ -74,6 +75,37 @@ def test_index_job_upload_reaches_terminal_state(tmp_path):
             time.sleep(0.01)
         assert current["status"] == "succeeded"
         assert catalog.get_document(current["document_id"])["status"] == "indexed"
+    finally:
+        jobs.close()
+
+
+def test_index_job_exposes_ocr_error_code(tmp_path):
+    config = Settings(
+        database_path=str(tmp_path / "catalog.db"),
+        bm25_index_path=str(tmp_path / "bm25.json"),
+        upload_dir=str(tmp_path / "uploads"),
+        job_workers=1,
+    )
+    catalog = DocumentCatalog(config.database_path)
+
+    class BrokenIngestion:
+        @staticmethod
+        def hash_bytes(_data):
+            return "hash"
+
+        def ingest(self, *_args):
+            raise OCRUnavailableError("install OCR tools")
+
+    jobs = IndexJobService(catalog, BrokenIngestion(), lambda _chunks: None, config)
+    try:
+        job = jobs.submit_upload("scan.pdf", b"pdf")
+        for _ in range(40):
+            current = catalog.get_job(job["job_id"])
+            if current["status"] == "failed":
+                break
+            time.sleep(0.01)
+        assert current["status"] == "failed"
+        assert current["error"].startswith("ocr_unavailable:")
     finally:
         jobs.close()
 

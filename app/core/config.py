@@ -45,11 +45,23 @@ class Settings:
     session_max_chars: int = int(os.getenv("SESSION_MAX_CHARS", "6000"))
     session_message_max_chars: int = int(os.getenv("SESSION_MESSAGE_MAX_CHARS", "2000"))
     log_query_content: bool = _env_bool("LOG_QUERY_CONTENT", False)
+    ocr_enabled: bool = _env_bool("OCR_ENABLED", False)
+    ocr_language: str = os.getenv("OCR_LANGUAGE", "eng")
+    ocr_timeout_seconds: float = float(os.getenv("OCR_TIMEOUT_SECONDS", "30"))
+    ocr_temp_dir: str | None = os.getenv("OCR_TEMP_DIR") or None
+
+    def __post_init__(self) -> None:
+        if self.ocr_enabled and self.ocr_timeout_seconds <= 0:
+            raise ValueError("OCR_TIMEOUT_SECONDS must be greater than zero when OCR is enabled")
+        if self.ocr_enabled and not self.ocr_language.strip():
+            raise ValueError("OCR_LANGUAGE must not be empty when OCR is enabled")
 
     def ensure_directories(self) -> None:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
         Path(self.bm25_index_path).parent.mkdir(parents=True, exist_ok=True)
         Path(self.upload_dir).mkdir(parents=True, exist_ok=True)
+        if self.ocr_temp_dir:
+            Path(self.ocr_temp_dir).mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()
