@@ -189,6 +189,8 @@ curl -N -X POST http://localhost:8000/chat/stream \
 问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回“当前知识库中没有足够信息”语义的拒答。
 完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。queued 索引任务可以取消，running 任务不会被强制终止。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
 
+`/search` 的 `stages` 会返回 `keyword`、`vector`、`fusion`、`rerank` 和 `retrieval` 五个阶段。每项包含 `status` 与 `latency_ms`；未启用阶段的耗时为 `null`，向量或模型异常时会显示已有的 `fallback:<异常类别>` 状态。控制台会在检索结果上方展示这些阶段信息。
+
 ### 可选模型重排
 
 默认不调用重排模型。需要使用本地 Ollama 对混合召回候选进行相关性评分时，设置：

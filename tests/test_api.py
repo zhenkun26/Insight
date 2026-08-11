@@ -73,6 +73,8 @@ def test_web_console_assets_and_api_routes(tmp_path):
     assert "洞察者" in page.text
     assert client.get("/assets/app.js").headers["content-type"].startswith("text/javascript")
     assert client.get("/assets/styles.css").headers["content-type"].startswith("text/css")
+    assert "renderRetrievalStages" in client.get("/assets/app.js").text
+    assert 'id="search-stages"' in page.text
     assert client.get("/health").json()["status"] == "ok"
 
 
@@ -106,3 +108,69 @@ def test_metadata_filter_and_sse_response(tmp_path):
     assert stream.status_code == 200
     assert stream.headers["content-type"].startswith("text/event-stream")
     assert "event: complete" in stream.text
+
+
+def test_search_returns_retrieval_stage_timings(tmp_path):
+    client = make_client(tmp_path)
+    client.post(
+        "/documents/upload",
+        files={"file": ("guide.txt", "台风预警信号说明".encode(), "text/plain")},
+    )
+    response = client.post("/search", json={"query": "台风预警"})
+    assert response.status_code == 200
+    stages = {stage["name"]: stage for stage in response.json()["stages"]}
+    assert set(stages) == {"keyword", "vector", "fusion", "rerank", "retrieval"}
+    assert stages["keyword"]["status"] == "ok"
+    assert stages["keyword"]["latency_ms"] >= 0
+    assert stages["vector"] == {"name": "vector", "status": "disabled", "latency_ms": None}
+    assert stages["rerank"] == {"name": "rerank", "status": "disabled", "latency_ms": None}
+    assert stages["retrieval"]["latency_ms"] >= 0
+
+
+def test_search_serializes_vector_fallback_stage(tmp_path):
+    config = Settings(
+        database_path=str(tmp_path / "db.sqlite"),
+        bm25_index_path=str(tmp_path / "bm25.json"),
+        upload_dir=str(tmp_path / "uploads"),
+        milvus_uri="",
+    )
+    catalog = DocumentCatalog(config.database_path)
+    ingestion = IngestionService(catalog, config)
+
+    class FallbackRetriever:
+        vector_store = None
+        last_status = {"keyword": "ok", "vector": "fallback:ConnectError", "rerank": "disabled"}
+        last_timings = {
+            "keyword_ms": 0.2,
+            "vector_ms": 1.4,
+            "fusion_ms": 0.1,
+            "rerank_ms": None,
+            "total_ms": 1.8,
+        }
+
+        def search(self, *_args, **_kwargs):
+            return []
+
+    retriever = FallbackRetriever()
+    client = TestClient(
+        create_app(
+            config,
+            AppServices(
+                catalog,
+                ingestion,
+                retriever,
+                QuestionAnsweringService(retriever, FakeOllama(), 0.001),
+                FakeOllama(),
+                config,
+            ),
+        )
+    )
+    response = client.post("/search", json={"query": "向量故障"})
+    assert response.status_code == 200
+    stages = {stage["name"]: stage for stage in response.json()["stages"]}
+    assert stages["vector"] == {
+        "name": "vector",
+        "status": "fallback:ConnectError",
+        "latency_ms": 1.4,
+    }
+    assert stages["rerank"]["latency_ms"] is None

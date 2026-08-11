@@ -34,6 +34,13 @@ function documentCard(document) {
   return `<div class="document-item"><strong title="${escapeText(document.filename)}">${escapeText(document.filename)}</strong><div class="item-meta"><span>${escapeText(document.status)}</span><span>${escapeText(document.chunk_count)} chunks</span>${tags}</div></div>`;
 }
 
+function renderRetrievalStages(stages) {
+  $("#search-stages").innerHTML = (stages || []).map((stage) => {
+    const latency = stage.latency_ms == null ? "未启用" : `${Number(stage.latency_ms).toFixed(1)}ms`;
+    return `<span class="stage" title="${escapeText(stage.status || "unknown")}">${escapeText(stage.name)} · ${escapeText(latency)}</span>`;
+  }).join("");
+}
+
 async function loadHealth() {
   const dot = $(".status-dot");
   try {
@@ -107,6 +114,7 @@ $("#search-form").addEventListener("submit", async (event) => {
   try {
     const result = await request("/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, top_k: 8 }) });
     const results = result.retrieval_results || [];
+    renderRetrievalStages(result.stages);
     $("#search-results").innerHTML = results.length ? results.map((item) => `<div class="result-item"><strong>${escapeText(item.source?.filename || item.chunk?.filename || "未命名片段")}<span class="score">${Number(item.score || 0).toFixed(4)}</span></strong><p>${escapeText(item.chunk?.text || item.text || "")}</p><div class="result-source"><span>${escapeText(item.source?.section || item.chunk?.section || "正文")}</span><span>${escapeText(item.source?.chunk_id || item.chunk?.chunk_id || "")}</span></div></div>`).join("") : `<div class="empty-state">当前知识库中没有匹配片段。</div>`;
     setStatus("#search-status", `${results.length} 条结果 · ${Number(result.latency_ms || 0).toFixed(1)} ms`, results.length ? "success" : "");
   } catch (error) {

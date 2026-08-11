@@ -61,6 +61,29 @@ def _api_error(
     )
 
 
+def _retrieval_stages(retriever) -> list[dict]:
+    status = getattr(retriever, "last_status", {})
+    timings = getattr(retriever, "last_timings", {})
+
+    def stage(name: str, timing_key: str, status_key: str | None = None) -> dict:
+        latency = timings.get(timing_key)
+        return {
+            "name": name,
+            "status": status.get(status_key, "ok" if latency is not None else "disabled")
+            if status_key
+            else ("ok" if latency is not None else "disabled"),
+            "latency_ms": round(float(latency), 3) if latency is not None else None,
+        }
+
+    return [
+        stage("keyword", "keyword_ms", "keyword"),
+        stage("vector", "vector_ms", "vector"),
+        stage("fusion", "fusion_ms"),
+        stage("rerank", "rerank_ms", "rerank"),
+        stage("retrieval", "total_ms"),
+    ]
+
+
 def create_router(services: AppServices) -> APIRouter:
     router = APIRouter()
 
@@ -205,7 +228,7 @@ def create_router(services: AppServices) -> APIRouter:
             retrieval_results=[_retrieval_response(result, services.catalog) for result in results],
             latency_ms=(time.perf_counter() - started) * 1000,
             trace_id=trace_id,
-            stages=[{"name": "retrieval", "status": "ok", "latency_ms": 0}],
+            stages=_retrieval_stages(services.retriever),
             retrieval_status=dict(getattr(services.retriever, "last_status", {})),
         )
 
