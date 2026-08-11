@@ -27,11 +27,18 @@ class HybridRetriever:
         self.reranker = reranker
         self.last_status: dict[str, str] = {}
 
-    def search(self, query: str, top_k: int | None = None) -> list[RetrievalResult]:
+    def search(
+        self,
+        query: str,
+        top_k: int | None = None,
+        *,
+        offset: int = 0,
+        allowed_chunk_ids: set[str] | None = None,
+    ) -> list[RetrievalResult]:
         if not query.strip():
             return []
         limit = top_k or self.top_k
-        keyword_results = self.bm25.search(query, self.candidate_k)
+        keyword_results = self.bm25.search(query, self.candidate_k, allowed_chunk_ids)
         vector_results: list[RetrievalResult] = []
         self.last_status = {
             "keyword": "ok",
@@ -40,7 +47,7 @@ class HybridRetriever:
         if self.embeddings and self.vector_store:
             try:
                 vector_results = self.vector_store.search(
-                    self.embeddings.embed(query), self.candidate_k
+                    self.embeddings.embed(query), self.candidate_k, allowed_chunk_ids
                 )
             except Exception as exc:
                 self.last_status["vector"] = f"fallback:{exc.__class__.__name__}"
@@ -75,4 +82,5 @@ class HybridRetriever:
         else:
             self.last_status["rerank"] = "disabled"
         threshold = self.score_threshold
-        return [result for result in results if result.score >= threshold][:limit]
+        filtered = [result for result in results if result.score >= threshold]
+        return filtered[offset : offset + limit]

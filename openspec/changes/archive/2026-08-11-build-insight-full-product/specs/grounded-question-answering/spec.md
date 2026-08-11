@@ -1,10 +1,4 @@
-# grounded-question-answering Specification
-
-## Purpose
-
-让问答结果严格受本地知识库证据约束，向用户返回可核验的来源引用，并在检索证据不足时安全拒答，同时公开可诊断的工作流阶段状态。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Grounded answer generation
 系统 SHALL 只将通过相关性判断的检索文本块作为生成上下文，并要求生成回答引用一个或多个实际来源；问答响应 SHALL 暴露已执行工作流阶段及其状态。

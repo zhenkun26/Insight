@@ -74,3 +74,24 @@ def test_chat_mock_and_refusal(tmp_path):
     response = client.post("/chat", json={"query": "台风预警"})
     assert response.status_code == 200
     assert "answer" in response.json()
+
+
+def test_metadata_filter_and_sse_response(tmp_path):
+    client = make_client(tmp_path)
+    upload = client.post(
+        "/documents/upload",
+        files={"file": ("guide.txt", "台风预警信号说明".encode(), "text/plain")},
+    )
+    document_id = upload.json()["document_id"]
+    updated = client.patch(
+        f"/documents/{document_id}/metadata",
+        json={"source": "demo", "tags": ["typhoon"], "description": "test"},
+    )
+    assert updated.status_code == 200
+    search = client.post("/search", json={"query": "台风", "tag": "typhoon"})
+    assert search.status_code == 200
+    assert search.json()["retrieval_results"]
+    stream = client.post("/chat/stream", json={"query": "台风预警"})
+    assert stream.status_code == 200
+    assert stream.headers["content-type"].startswith("text/event-stream")
+    assert "event: complete" in stream.text

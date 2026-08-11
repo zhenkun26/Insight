@@ -17,7 +17,7 @@ class IngestionService:
         self.settings.ensure_directories()
 
     def ingest(self, filename: str, data: bytes, index_callback=None) -> dict:
-        content_hash = hashlib.sha256(data).hexdigest()
+        content_hash = self.hash_bytes(data)
         existing = self.catalog.find_by_hash(content_hash)
         if existing:
             return {
@@ -40,8 +40,19 @@ class IngestionService:
             )
             for draft in drafts
         ]
-        self.catalog.upsert_document(document_id, filename, content_hash, len(data), "processing")
+        self.catalog.upsert_document(
+            document_id,
+            filename,
+            content_hash,
+            len(data),
+            "processing",
+            index_version=self.settings.index_version,
+            embedding_model=self.settings.embedding_model,
+        )
         self.catalog.replace_chunks(document_id, chunks)
+        Path(self.settings.upload_dir, f"{document_id}{Path(filename).suffix.lower()}").write_bytes(
+            data
+        )
         try:
             if index_callback:
                 index_callback(chunks)
@@ -49,9 +60,6 @@ class IngestionService:
         except Exception:
             self.catalog.set_status(document_id, "index_failed")
             raise
-        Path(self.settings.upload_dir, f"{document_id}{Path(filename).suffix.lower()}").write_bytes(
-            data
-        )
         return {
             "document_id": document_id,
             "filename": filename,
@@ -70,9 +78,17 @@ class IngestionService:
         if index_callback:
             index_callback(chunks)
         for document in self.catalog.list_documents():
-            self.catalog.set_status(document["document_id"], "indexed")
+            self.catalog.set_index_metadata(
+                document["document_id"],
+                self.settings.index_version,
+                self.settings.embedding_model,
+            )
         return {
             "documents": len(self.catalog.list_documents()),
             "chunks": len(chunks),
             "status": "indexed",
         }
+
+    @staticmethod
+    def hash_bytes(data: bytes) -> str:
+        return hashlib.sha256(data).hexdigest()

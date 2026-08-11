@@ -1,10 +1,4 @@
-# document-ingestion Specification
-
-## Purpose
-
-让本地气象资料能够被稳定解析、切分、追踪和重新索引，同时保留回答所需的文件、页码、章节与文本块来源信息。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Supported document ingestion
 系统 SHALL 接受 PDF、Markdown 和 TXT 文件，并为每个成功导入的文件生成稳定的文档标识；导入记录 SHALL 保存内容指纹、解析器版本和索引配置版本。

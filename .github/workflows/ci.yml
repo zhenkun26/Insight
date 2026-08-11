@@ -24,6 +24,8 @@ jobs:
       - name: Ruff check
         run: ruff check app tests scripts
       - name: Import check
-        run: python -c "from app.main import app; print(app.title)"
+        run: python -c "from app.main import app; from app.services.jobs import IndexJobService; from app.workflows import WorkflowState; print(app.title, WorkflowState.__name__, IndexJobService.__name__)"
       - name: Tests
         run: pytest
+      - name: Evaluation smoke test
+        run: python scripts/evaluate.py --output /tmp/insight-evaluation.json

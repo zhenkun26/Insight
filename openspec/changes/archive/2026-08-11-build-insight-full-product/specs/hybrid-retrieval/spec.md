@@ -1,10 +1,4 @@
-# hybrid-retrieval Specification
-
-## Purpose
-
-为气象业务问题提供可解释的关键词与语义联合召回，使搜索结果既能匹配专业术语，也能覆盖表达不同但含义相近的资料内容。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Hybrid candidate retrieval
 系统 SHALL 对查询分别执行关键词召回和向量召回，并为每个候选结果保留文本块标识、来源元数据和各路检索分数；两路召回 SHALL 接受一致的文档过滤条件。

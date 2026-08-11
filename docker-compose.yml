@@ -10,6 +10,11 @@ services:
       MILVUS_URI: http://milvus:19530
     volumes:
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on:
       - milvus
 

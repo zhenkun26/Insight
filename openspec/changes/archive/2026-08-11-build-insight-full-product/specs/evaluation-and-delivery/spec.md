@@ -1,10 +1,4 @@
-# evaluation-and-delivery Specification
-
-## Purpose
-
-让项目可以在不依赖真实 Ollama、Milvus 或外部 API 的 CI 环境中验证核心行为，并通过可复现脚本记录真实检索评估结果和本地部署方式。
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Deterministic automated tests
 项目 SHALL 提供覆盖解析、切分、元数据、BM25、向量接口、混合融合、拒答、引用、健康检查、上传和 mock 问答的自动化测试，并覆盖任务生命周期、过滤、会话约束和流式事件。

@@ -8,5 +8,7 @@
   {"question": "异常观测记录应该怎么处理？", "expected": ["observation-process.md", "原始记录"]},
   {"question": "如何追踪观测资料处理过程？", "expected": ["observation-process.md", "规则版本"]},
   {"question": "预警等级判断能否只看一个关键词？", "expected": ["typhoon-warning.md", "不能"]},
-  {"question": "暴雨业务需要关注时间窗口吗？", "expected": ["heavy-rain-demo.txt", "时间窗口"]}
+  {"question": "暴雨业务需要关注时间窗口吗？", "expected": ["heavy-rain-demo.txt", "时间窗口"]},
+  {"question": "本知识库是否规定了航空发动机维修周期？", "expected": [], "should_refuse": true},
+  {"question": "本知识库是否包含海洋潮汐预报公式？", "expected": [], "should_refuse": true}
 ]

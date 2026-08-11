@@ -11,6 +11,8 @@ class Source:
     chunk_id: str
     page: int | None = None
     section: str | None = None
+    origin: str | None = None
+    tags: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -19,6 +21,8 @@ class Source:
             "chunk_id": self.chunk_id,
             "page": self.page,
             "section": self.section,
+            "source": self.origin,
+            "tags": self.tags,
         }
 
 
@@ -31,10 +35,20 @@ class Chunk:
     page: int | None = None
     section: str | None = None
     position: int = 0
+    origin: str | None = None
+    tags: list[str] = field(default_factory=list)
 
     @property
     def source(self) -> Source:
-        return Source(self.document_id, self.filename, self.chunk_id, self.page, self.section)
+        return Source(
+            self.document_id,
+            self.filename,
+            self.chunk_id,
+            self.page,
+            self.section,
+            self.origin,
+            self.tags,
+        )
 
 
 @dataclass

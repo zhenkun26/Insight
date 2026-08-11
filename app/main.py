@@ -14,16 +14,20 @@ from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.vector import MilvusVectorStore
 from app.services.catalog import DocumentCatalog
 from app.services.ingestion import IngestionService
+from app.services.jobs import IndexJobService
 from app.services.ollama import OllamaClient
 from app.services.qa import QuestionAnsweringService
 from app.services.rerank import SimpleKeywordReranker
+from app.services.session import SessionService
 
 
 def build_services(config: Settings = settings) -> AppServices:
     config.ensure_directories()
     catalog = DocumentCatalog(config.database_path)
+    catalog.mark_reindex_required(config.index_version, config.embedding_model)
     bm25 = BM25Index(config.bm25_index_path)
-    bm25.load()
+    if not any(item["status"] == "reindex_required" for item in catalog.list_documents()):
+        bm25.load()
     ollama = OllamaClient(
         config.llm_base_url,
         config.llm_model,
@@ -66,6 +70,8 @@ def build_services(config: Settings = settings) -> AppServices:
         config,
     )
     services._index_chunks = index_chunks
+    services.session_service = SessionService(catalog, config)
+    services.job_service = IndexJobService(catalog, ingestion, index_chunks, config)
     return services
 
 
@@ -75,6 +81,7 @@ def create_app(config: Settings = settings, services: AppServices | None = None)
     @app.middleware("http")
     async def request_logging(request, call_next):
         request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+        request.state.request_id = request_id
         started = time.perf_counter()
         response = await call_next(request)
         response.headers["x-request-id"] = request_id

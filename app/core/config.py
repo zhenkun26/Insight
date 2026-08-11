@@ -38,6 +38,13 @@ class Settings:
     rrf_k: int = int(os.getenv("RRF_K", "60"))
     request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
     enable_rerank: bool = _env_bool("ENABLE_RERANK", False)
+    job_workers: int = int(os.getenv("JOB_WORKERS", "2"))
+    index_version: str = os.getenv("INDEX_VERSION", "1")
+    default_page_size: int = int(os.getenv("DEFAULT_PAGE_SIZE", "20"))
+    session_max_turns: int = int(os.getenv("SESSION_MAX_TURNS", "6"))
+    session_max_chars: int = int(os.getenv("SESSION_MAX_CHARS", "6000"))
+    session_message_max_chars: int = int(os.getenv("SESSION_MESSAGE_MAX_CHARS", "2000"))
+    log_query_content: bool = _env_bool("LOG_QUERY_CONTENT", False)
 
     def ensure_directories(self) -> None:
         Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)

@@ -45,6 +45,8 @@ def evaluate(sample_dir: Path, question_file: Path, top_k: int = 5) -> dict:
     retriever = build_retriever(sample_dir)
     questions = json.loads(question_file.read_text(encoding="utf-8"))
     hits = 0
+    refusal_hits = 0
+    refusal_count = 0
     reciprocal_ranks: list[float] = []
     latencies: list[float] = []
     rows = []
@@ -54,6 +56,11 @@ def evaluate(sample_dir: Path, question_file: Path, top_k: int = 5) -> dict:
         latency = (time.perf_counter() - started) * 1000
         latencies.append(latency)
         expected = [value.lower() for value in item["expected"]]
+        should_refuse = bool(item.get("should_refuse"))
+        if should_refuse:
+            refusal_count += 1
+            if not results:
+                refusal_hits += 1
         matched_rank = None
         for rank, result in enumerate(results, 1):
             haystack = f"{result.chunk.filename} {result.chunk.text}".lower()
@@ -70,6 +77,8 @@ def evaluate(sample_dir: Path, question_file: Path, top_k: int = 5) -> dict:
                 "question": item["question"],
                 "matched_rank": matched_rank,
                 "latency_ms": round(latency, 3),
+                "should_refuse": should_refuse,
+                "result_count": len(results),
             }
         )
     count = len(questions) or 1
@@ -79,11 +88,12 @@ def evaluate(sample_dir: Path, question_file: Path, top_k: int = 5) -> dict:
             "llm": os.getenv("LLM_MODEL", "not_used"),
             "embedding": os.getenv("EMBEDDING_MODEL", "not_used"),
         },
-        "parameters": {"top_k": top_k, "retriever": "bm25+rrf-compatible pipeline"},
+        "parameters": {"top_k": top_k, "retriever": "bm25-only local baseline"},
         "dataset": str(question_file),
         "count": len(questions),
         "hit_rate": round(hits / count, 4),
         "mrr": round(sum(reciprocal_ranks) / count, 4),
+        "refusal_accuracy": round(refusal_hits / refusal_count, 4) if refusal_count else None,
         "average_latency_ms": round(sum(latencies) / count, 3),
         "rows": rows,
     }

@@ -24,7 +24,12 @@ class InMemoryVectorStore:
         for chunk, vector in zip(chunks, vectors, strict=True):
             self._items[chunk.chunk_id] = (chunk, vector)
 
-    def search(self, vector: list[float], limit: int) -> list[RetrievalResult]:
+    def search(
+        self,
+        vector: list[float],
+        limit: int,
+        allowed_chunk_ids: set[str] | None = None,
+    ) -> list[RetrievalResult]:
         results = [
             RetrievalResult(
                 chunk,
@@ -32,6 +37,7 @@ class InMemoryVectorStore:
                 vector_score=cosine_similarity(vector, item_vector),
             )
             for chunk, item_vector in self._items.values()
+            if allowed_chunk_ids is None or chunk.chunk_id in allowed_chunk_ids
         ]
         return sorted(results, key=lambda item: (-item.score, item.chunk.position))[:limit]
 
@@ -91,17 +97,22 @@ class MilvusVectorStore:
             ],
         )
 
-    def search(self, vector: list[float], limit: int) -> list[RetrievalResult]:
+    def search(
+        self,
+        vector: list[float],
+        limit: int,
+        allowed_chunk_ids: set[str] | None = None,
+    ) -> list[RetrievalResult]:
         if not self._client.has_collection(self._collection_name):
             return []
         self._client.load_collection(collection_name=self._collection_name)
         rows = self._client.search(
             collection_name=self._collection_name,
             data=[vector],
-            limit=limit,
+            limit=max(limit * 3, limit) if allowed_chunk_ids is not None else limit,
             output_fields=["document_id", "filename", "text"],
         )[0]
-        return [
+        results = [
             RetrievalResult(
                 Chunk(
                     str(row["entity"].get("chunk_id", row.get("id", ""))),
@@ -114,6 +125,9 @@ class MilvusVectorStore:
             )
             for row in rows
         ]
+        if allowed_chunk_ids is not None:
+            results = [item for item in results if item.chunk.chunk_id in allowed_chunk_ids]
+        return results[:limit]
 
     def delete_document(self, document_id: str) -> None:
         if self._client.has_collection(self._collection_name):

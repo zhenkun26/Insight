@@ -16,19 +16,20 @@
 ```mermaid
 flowchart LR
   A[PDF / Markdown / TXT] --> B[解析与分块]
-  B --> C[SQLite 文档目录]
-  B --> D[BM25 索引]
-  B --> E[Ollama Embedding]
+  B --> N[本地索引任务]
+  N --> C[SQLite 文档目录]
+  N --> D[BM25 索引]
+  N --> E[Ollama Embedding]
   E --> F[Milvus / Milvus Lite]
   Q[用户问题] --> G[BM25 + 向量召回]
   F --> G
   D --> G
   G --> H[RRF 融合]
   H --> I[可选 Rerank]
-  I --> J{相关性足够?}
-  J -->|否| K[明确拒答]
-  J -->|是| L[Ollama 生成]
-  L --> M[回答 + 来源引用]
+  I --> R{相关性足够?}
+  R -->|否| K[明确拒答 + 阶段状态]
+  R -->|是| L[Ollama 生成]
+  L --> M[回答 + 来源引用 + trace]
 ```
 
 ## 核心功能
@@ -38,7 +39,10 @@ flowchart LR
 - BM25 + 向量召回、RRF 融合、Top-K、阈值和可选 Rerank。
 - `/chat`、`/chat/stream`、`/search`、文档管理和 `/health`。
 - Ollama、Milvus 和 Rerank 均通过 adapter 隔离，测试可使用 fake/mock。
-- 评估脚本输出实际运行得到的 hit rate、MRR 和平均延迟；README 不预填性能指标。
+- 索引任务支持后台执行、状态轮询、失败重试、内容指纹幂等和模型版本变更提示。
+- 文档支持来源/标签过滤，搜索支持分页；问答支持可选会话上下文和 SSE 事件流。
+- RAG 工作流返回 query analysis、retrieval、rerank、relevance check、generation/fallback 阶段信息。
+- 评估脚本输出实际运行得到的 hit rate、MRR、拒答准确性和平均延迟；README 不预填性能指标。
 
 ## 技术栈
 
@@ -54,7 +58,8 @@ app/
 ├── models/       # domain models
 ├── retrieval/    # BM25, vector, hybrid fusion
 ├── schemas/      # API schemas
-└── services/     # catalog, Ollama, ingestion, QA
+└── services/     # catalog, Ollama, ingestion, jobs, sessions, QA
+└── workflows/    # explicit RAG stage state
 data/
 ├── sample_docs/  # synthetic demo documents
 └── uploads/      # local runtime uploads
@@ -78,6 +83,8 @@ uvicorn app.main:app --reload
 ```
 
 如果不安装或不启动外部模型，应用仍可以启动并使用关键词检索；问答和向量召回会根据依赖状态返回明确结果。
+
+完整版本的上传和重建索引默认返回后台任务，不阻塞 HTTP 请求。可通过 `/jobs/{job_id}` 轮询状态；进程重启后未完成的任务会被标记为可重试失败。
 
 ## Ollama 模型准备
 
@@ -115,6 +122,15 @@ curl -X POST http://localhost:8000/documents/upload \
 
 curl http://localhost:8000/documents
 curl -X POST http://localhost:8000/documents/reindex
+
+# 上传/重建响应中的 job_id
+curl http://localhost:8000/jobs/<job_id>
+curl -X POST http://localhost:8000/jobs/<job_id>/retry
+
+# 更新来源和标签
+curl -X PATCH http://localhost:8000/documents/<document_id>/metadata \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"demo","tags":["typhoon"],"description":"synthetic demo"}'
 ```
 
 ## 搜索与问答
@@ -127,9 +143,20 @@ curl -X POST http://localhost:8000/search \
 curl -X POST http://localhost:8000/chat \
   -H 'Content-Type: application/json' \
   -d '{"query":"台风预警信号分为几级？"}'
+
+# 按标签过滤并分页
+curl -X POST http://localhost:8000/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"预警","tag":"typhoon","offset":0,"top_k":5}'
+
+# SSE 流式问答
+curl -N -X POST http://localhost:8000/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"台风预警信号分为几级？","session_id":"demo-session"}'
 ```
 
 问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回“当前知识库中没有足够信息”语义的拒答。
+完整版响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`。会话历史只辅助当前问题理解，不会替代当前轮次的检索证据。
 
 ## 测试
 
@@ -143,19 +170,21 @@ python -c "from app.main import app; print(app.title)"
 
 ## 评估
 
-评估数据位于 `data/eval_questions.json`，包含 10 条问题及期望命中文件和关键内容。运行：
+评估数据位于 `data/eval_questions.json`，包含 10～20 条问题、期望命中文件/关键内容，以及拒答样例。运行：
 
 ```bash
 python scripts/evaluate.py --output data/eval-result.json
 ```
 
-脚本实时计算 hit rate、MRR、平均检索延迟，并记录运行日期、模型配置和参数。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值会随语料、模型和硬件变化。
+脚本实时计算 hit rate、MRR、拒答准确性、平均检索延迟，并记录运行日期、模型配置和参数。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值会随语料、模型和硬件变化。
 
 ## 已知限制
 
 - PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
 - Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
 - 当前没有用户认证、权限控制、前端界面和多租户能力。
+- 索引任务是单进程本地 worker，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
+- SSE 第一版保证事件协议和完整结果交付，是否为模型原生 token 流取决于 Ollama adapter 配置。
 - Rerank 目前是可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。
 - 合成演示资料不能替代正式气象业务规范。
 

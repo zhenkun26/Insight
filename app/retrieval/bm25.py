@@ -10,9 +10,18 @@ from app.models.domain import Chunk, RetrievalResult
 
 
 def tokenize(text: str) -> list[str]:
-    # Keep Latin words intact and split CJK into searchable characters. This
-    # avoids requiring a language-specific tokenizer for short local corpora.
-    return re.findall(r"[a-z0-9_]+|[\u4e00-\u9fff]", text.lower())
+    # Keep Latin words intact and use CJK bigrams. Bigrams avoid matching every
+    # unrelated document on common single Chinese characters while preserving
+    # useful terms such as 台风, 预警, 暴雨 and 时间.
+    tokens: list[str] = []
+    for part in re.findall(r"[a-z0-9_]+|[\u4e00-\u9fff]+", text.lower()):
+        if re.fullmatch(r"[\u4e00-\u9fff]+", part):
+            tokens.extend(part[index : index + 2] for index in range(len(part) - 1))
+            if len(part) == 1:
+                tokens.append(part)
+        else:
+            tokens.append(part)
+    return tokens
 
 
 class BM25Index:
@@ -37,12 +46,19 @@ class BM25Index:
         }
         self._avgdl = sum(map(len, self._tokens)) / count if count else 0.0
 
-    def search(self, query: str, limit: int = 20) -> list[RetrievalResult]:
+    def search(
+        self,
+        query: str,
+        limit: int = 20,
+        allowed_chunk_ids: set[str] | None = None,
+    ) -> list[RetrievalResult]:
         query_tokens = tokenize(query)
         if not query_tokens or not self.chunks:
             return []
         scored: list[RetrievalResult] = []
         for chunk, tokens in zip(self.chunks, self._tokens, strict=True):
+            if allowed_chunk_ids is not None and chunk.chunk_id not in allowed_chunk_ids:
+                continue
             frequencies = {token: tokens.count(token) for token in set(query_tokens)}
             score = 0.0
             for token, frequency in frequencies.items():
