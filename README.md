@@ -219,7 +219,25 @@ python -c "from app.main import app; print(app.title)"
 python scripts/evaluate.py --output data/eval-result.json
 ```
 
-脚本实时计算 hit rate、MRR、拒答准确性、平均检索延迟，并记录运行日期、模型配置和参数。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值会随语料、模型和硬件变化。
+默认 profile 是 `disabled`：只运行本地 BM25 基线，不访问 Ollama、Milvus 或外部 API。可以用同一问题集比较不同重排路径：
+
+```bash
+# 默认离线基线
+python scripts/evaluate.py --reranker-mode disabled --output /tmp/insight-eval-disabled.json
+
+# 确定性的关键词重排，不需要模型服务
+python scripts/evaluate.py --reranker-mode keyword --output /tmp/insight-eval-keyword.json
+
+# 显式启用 Ollama 重排；每个候选片段会产生一次本地模型请求
+python scripts/evaluate.py \
+  --reranker-mode ollama \
+  --reranker-model "$RERANKER_MODEL" \
+  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
+  --top-k 5 \
+  --output /tmp/insight-eval-ollama.json
+```
+
+输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `profile`、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。其中 `null` 表示阶段未启用，不代表零毫秒；Ollama profile 的模型、地址、超时和实际延迟会写入结果。当前仓库不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
 
 ## 已知限制
 

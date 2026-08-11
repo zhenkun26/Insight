@@ -4,7 +4,7 @@ from app.models.domain import Chunk, RetrievalResult
 from app.retrieval.bm25 import BM25Index
 from app.retrieval.hybrid import HybridRetriever
 from app.retrieval.vector import InMemoryVectorStore
-from app.services.rerank import OllamaReranker, parse_rerank_score
+from app.services.rerank import OllamaReranker, SimpleKeywordReranker, parse_rerank_score
 
 
 class FakeEmbedding:
@@ -47,6 +47,28 @@ def test_hybrid_fuses_and_deduplicates():
     assert results[0].chunk.chunk_id == "a"
     assert len({item.chunk.chunk_id for item in results}) == len(results)
     assert retriever.last_status["vector"] == "ok"
+    assert retriever.last_timings["keyword_ms"] is not None
+    assert retriever.last_timings["vector_ms"] is not None
+    assert retriever.last_timings["fusion_ms"] is not None
+    assert retriever.last_timings["total_ms"] is not None
+
+
+def test_hybrid_marks_disabled_stage_timings_as_none():
+    index = BM25Index()
+    index.build(chunks())
+    retriever = HybridRetriever(index, top_k=2, score_threshold=0.001)
+    assert retriever.search("台风")
+    assert retriever.last_status["vector"] == "disabled"
+    assert retriever.last_status["rerank"] == "disabled"
+    assert retriever.last_timings["vector_ms"] is None
+    assert retriever.last_timings["rerank_ms"] is None
+
+
+def test_keyword_reranker_handles_cjk_queries():
+    results = [RetrievalResult(chunks()[1], 0.8), RetrievalResult(chunks()[0], 0.7)]
+    ranked = SimpleKeywordReranker().rerank("台风预警", results)
+    assert ranked[0].chunk.chunk_id == "a"
+    assert ranked[0].rerank_score > ranked[1].rerank_score
 
 
 def test_hybrid_falls_back_when_vector_fails():

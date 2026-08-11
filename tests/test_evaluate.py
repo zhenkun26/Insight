@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from scripts.evaluate import evaluate
+
+
+def make_eval_files(tmp_path):
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    (samples / "warning.txt").write_text("台风预警信号分为四级，包含蓝色和红色。", encoding="utf-8")
+    questions = tmp_path / "questions.json"
+    questions.write_text(
+        json.dumps(
+            [
+                {"question": "台风预警分为几级？", "expected": ["warning.txt", "四级"]},
+                {"question": "航空发动机维修周期？", "expected": [], "should_refuse": True},
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return samples, questions
+
+
+def test_default_evaluation_reports_disabled_stages(tmp_path):
+    samples, questions = make_eval_files(tmp_path)
+    result = evaluate(samples, questions)
+    assert result["profile"] == "disabled"
+    assert result["count"] == 2
+    assert result["rows"][1]["matched_rank"] is None
+    assert result["average_stage_latency_ms"]["keyword_ms"] is not None
+    assert result["average_stage_latency_ms"]["vector_ms"] is None
+    assert result["rows"][0]["stage_status"]["rerank"] == "disabled"
+
+
+def test_keyword_profile_reports_rerank_stage(tmp_path):
+    samples, questions = make_eval_files(tmp_path)
+    result = evaluate(samples, questions, reranker_mode="keyword")
+    assert result["profile"] == "keyword"
+    assert result["parameters"]["retriever"] == "bm25+keyword"
+    assert result["average_stage_latency_ms"]["rerank_ms"] is not None
+    assert result["rows"][0]["stage_status"]["rerank"] == "ok"
+
+
+def test_ollama_profile_requires_a_model(tmp_path):
+    samples, questions = make_eval_files(tmp_path)
+    with pytest.raises(ValueError, match="requires"):
+        evaluate(samples, questions, reranker_mode="ollama")

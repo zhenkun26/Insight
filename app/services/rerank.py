@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from app.models.domain import RetrievalResult
+from app.retrieval.bm25 import tokenize
 
 
 class ModelGenerator(Protocol):
@@ -28,10 +29,11 @@ class SimpleKeywordReranker:
     """Small deterministic reranker useful for local demos and tests."""
 
     def rerank(self, query: str, results: Sequence[RetrievalResult]) -> list[RetrievalResult]:
-        terms = set(query.lower().split())
+        terms = set(tokenize(query))
         ranked = []
         for result in results:
-            overlap = sum(term in result.chunk.text.lower() for term in terms)
+            text_terms = set(tokenize(result.chunk.text))
+            overlap = sum(term in text_terms for term in terms)
             result.rerank_score = overlap / max(len(terms), 1)
             result.score = result.rerank_score
             ranked.append(result)

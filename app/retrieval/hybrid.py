@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from app.models.domain import RetrievalResult
 from app.retrieval.bm25 import BM25Index
 from app.retrieval.protocols import EmbeddingProvider, Reranker, VectorStore
@@ -26,6 +28,13 @@ class HybridRetriever:
         self.rrf_k = rrf_k
         self.reranker = reranker
         self.last_status: dict[str, str] = {}
+        self.last_timings: dict[str, float | None] = {
+            "keyword_ms": None,
+            "vector_ms": None,
+            "fusion_ms": None,
+            "rerank_ms": None,
+            "total_ms": None,
+        }
 
     def search(
         self,
@@ -35,22 +44,37 @@ class HybridRetriever:
         offset: int = 0,
         allowed_chunk_ids: set[str] | None = None,
     ) -> list[RetrievalResult]:
+        started = time.perf_counter()
+        self.last_timings = {
+            "keyword_ms": None,
+            "vector_ms": None,
+            "fusion_ms": None,
+            "rerank_ms": None,
+            "total_ms": None,
+        }
         if not query.strip():
+            self.last_status = {"keyword": "disabled", "vector": "disabled", "rerank": "disabled"}
+            self.last_timings["total_ms"] = (time.perf_counter() - started) * 1000
             return []
         limit = top_k or self.top_k
+        keyword_started = time.perf_counter()
         keyword_results = self.bm25.search(query, self.candidate_k, allowed_chunk_ids)
+        self.last_timings["keyword_ms"] = (time.perf_counter() - keyword_started) * 1000
         vector_results: list[RetrievalResult] = []
         self.last_status = {
             "keyword": "ok",
             "vector": "disabled" if not (self.embeddings and self.vector_store) else "ok",
         }
         if self.embeddings and self.vector_store:
+            vector_started = time.perf_counter()
             try:
                 vector_results = self.vector_store.search(
                     self.embeddings.embed(query), self.candidate_k, allowed_chunk_ids
                 )
             except Exception as exc:
                 self.last_status["vector"] = f"fallback:{exc.__class__.__name__}"
+            self.last_timings["vector_ms"] = (time.perf_counter() - vector_started) * 1000
+        fusion_started = time.perf_counter()
         merged: dict[str, RetrievalResult] = {}
         for rank, result in enumerate(keyword_results, 1):
             merged[result.chunk.chunk_id] = RetrievalResult(
@@ -73,14 +97,18 @@ class HybridRetriever:
                     details={"vector_rank": rank},
                 )
         results = sorted(merged.values(), key=lambda item: (-item.score, item.chunk.position))
+        self.last_timings["fusion_ms"] = (time.perf_counter() - fusion_started) * 1000
         if self.reranker:
+            rerank_started = time.perf_counter()
             try:
                 results = self.reranker.rerank(query, results)
                 self.last_status["rerank"] = "ok"
             except Exception as exc:
                 self.last_status["rerank"] = f"fallback:{exc.__class__.__name__}"
+            self.last_timings["rerank_ms"] = (time.perf_counter() - rerank_started) * 1000
         else:
             self.last_status["rerank"] = "disabled"
         threshold = self.score_threshold
         filtered = [result for result in results if result.score >= threshold]
+        self.last_timings["total_ms"] = (time.perf_counter() - started) * 1000
         return filtered[offset : offset + limit]
