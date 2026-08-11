@@ -1,5 +1,8 @@
 # 洞察者 Insight
 
+[![CI](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml/badge.svg)](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml)
+
+
 洞察者 Insight 是一个面向气象业务资料的 local-first RAG 应用示例。它支持在本地导入 PDF、Markdown 和 TXT 资料，使用 BM25 与向量检索进行混合召回，并返回带来源引用的问答结果。项目自带的气象资料均为合成演示内容，不代表任何官方业务规范。
 
 ## 使用场景
