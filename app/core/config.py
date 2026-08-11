@@ -1,0 +1,48 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass(frozen=True)
+class Settings:
+    app_name: str = os.getenv("APP_NAME", "Insight")
+    app_version: str = os.getenv("APP_VERSION", "0.1.0")
+    environment: str = os.getenv("ENVIRONMENT", "local")
+    host: str = os.getenv("HOST", "0.0.0.0")
+    port: int = int(os.getenv("PORT", "8000"))
+    database_path: str = os.getenv("DATABASE_PATH", "data/insight.db")
+    bm25_index_path: str = os.getenv("BM25_INDEX_PATH", "data/bm25.json")
+    upload_dir: str = os.getenv("UPLOAD_DIR", "data/uploads")
+    # Empty by default keeps imports and CI independent from a vector service.
+    # Set MILVUS_URI=data/milvus.db for Milvus Lite or use the Compose URI.
+    milvus_uri: str = os.getenv("MILVUS_URI", "")
+    milvus_collection: str = os.getenv("MILVUS_COLLECTION", "insight_chunks")
+    llm_base_url: str = os.getenv("LLM_BASE_URL", "http://localhost:11434")
+    llm_model: str = os.getenv("LLM_MODEL", "llama3.2:3b")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+    reranker_model: str = os.getenv("RERANKER_MODEL", "")
+    top_k: int = int(os.getenv("TOP_K", "5"))
+    candidate_k: int = int(os.getenv("CANDIDATE_K", "20"))
+    score_threshold: float = float(os.getenv("SCORE_THRESHOLD", "0.01"))
+    chunk_size: int = int(os.getenv("CHUNK_SIZE", "900"))
+    chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "120"))
+    rrf_k: int = int(os.getenv("RRF_K", "60"))
+    request_timeout_seconds: float = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "60"))
+    enable_rerank: bool = _env_bool("ENABLE_RERANK", False)
+
+    def ensure_directories(self) -> None:
+        Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.bm25_index_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(self.upload_dir).mkdir(parents=True, exist_ok=True)
+
+
+settings = Settings()

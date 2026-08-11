@@ -1,0 +1,17 @@
+.env
+.venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+data/*.db
+data/*.json
+!data/eval_questions.json
+data/milvus*
+data/uploads/*
+!data/uploads/.gitkeep
+coverage.xml
+htmlcov/
+.DS_Store
