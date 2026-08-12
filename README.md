@@ -283,3 +283,5 @@ python scripts/evaluate.py \
 - 增加可选 LangGraph 状态图和节点级追踪。
 - 增加真实公开资料的许可与来源管理。
 - 增加可选的跨编码器 Rerank 和更系统的离线评估集。
+
+> 本项目由 Vibe Coding 辅助实现落地。Built with Vibe Coding.
