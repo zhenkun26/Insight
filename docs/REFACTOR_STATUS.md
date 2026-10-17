@@ -8,20 +8,24 @@ This is the current-state entry for [the refactoring plan](../REFACTOR_INTEGRATI
 
 | Field | Current value |
 | --- | --- |
-| Packet | P3 review follow-up: identify actual PR delivery and historical maintenance evidence |
-| Authorized scope | Update this status file only, verify, commit, and push to the current branch; keep PR #2 as a draft and do not merge |
-| User reference | 2026-10-17 permission-repair and read-only investigation instructions, followed by approval to address the two P3 review findings with truthful evidence identities and unrecoverable-information limits |
+| Packet | PR #3 P3 review follow-up: reconcile delivery state, commit identities, and revision-specific CI evidence |
+| Authorized scope | Update this status file only, verify, commit, and push to the current branch; keep PR #3 in Draft, do not merge, and do not start R01 |
+| User reference | 2026-10-17 authorization to merge PR #2 and synchronize local main, followed by authorization to push status commit `bb8d43e`, create Draft PR #3, and address its two P3 review findings |
 | Planning disposition | COMPLETE (PLAN-00) |
 | Maintenance disposition | COMPLETE; permission repair and investigation closed with the historical attribute limitation accepted |
 | Implementation disposition | NOT_STARTED |
 | Active implementation increment | NONE |
 | Branch | `codex/permission-repair-status` |
 | Application baseline | `abb59d7515119e9dcc4ee13bc307cbdc4bed8841` |
-| Local main | `47e165fddbf36b0da046bf94c02f9fdf7f9c0b28`, matching `origin/main` at the completed synchronization check |
-| Delivery scope | This status-record increment changes this existing Markdown file only. Initial remote delivery also includes the existing refactoring plan and planning consistency review; there are no application implementation changes |
-| Remote delivery | PUBLISHED: the plan, status record, and consistency review are on [origin/codex/permission-repair-status](https://github.com/zhenkun26/Insight/tree/codex/permission-repair-status). The verified pre-follow-up remote head is `a095d67821291fb6a7398133e680285687befaf8`; this documentation follow-up is authorized for the same branch |
-| Review disposition | [PR #2](https://github.com/zhenkun26/Insight/pull/2) exists and is OPEN / DRAFT, from `codex/permission-repair-status` to `main`; it is not merged. Its verified comparison contains exactly the plan, this status record, and the planning consistency review. Existing `main` history is included in the source branch, excluding already-merged README changes. Keep the PR as a draft; do not merge |
-| CI evidence checkpoint | Both the [push run](https://github.com/zhenkun26/Insight/actions/runs/39016103272) and [PR run](https://github.com/zhenkun26/Insight/actions/runs/39016120920) passed for `a095d67821291fb6a7398133e680285687befaf8` on 2026-10-17. These results apply only to that revision; subsequent commits need their own results in [PR #2 checks](https://github.com/zhenkun26/Insight/pull/2/checks). CI does not verify this workstation's permissions or historical attributes |
+| Local main | `d4820a2babfbbf8cd4022fad80bd6e6c81889ad7`, matching both `origin/main` and the live remote main at the completed synchronization check. The working directory stayed on `codex/permission-repair-status` |
+| Delivery scope | PR #3 and this review follow-up change only this existing Markdown file relative to `main`. They are separate from the already-merged PR #2 head. No application implementation changes |
+| PR #2 integration | MERGED: the plan, status record, and consistency review were integrated into `main` by [PR #2](https://github.com/zhenkun26/Insight/pull/2), merge commit `d4820a2babfbbf8cd4022fad80bd6e6c81889ad7`. Its source head at merge was `268e32fd3751477951dc776c6c245ae5befc515d`, not the later source-branch head. Merge recorded at 2026-10-17 04:26:43 America/New_York, after the authorized transition to Ready for review and CI verification |
+| Remote delivery checkpoint | PUBLISHED: status commit `bb8d43e9a3ed3ab4d9ad6aa8534df977f999d6e0` was pushed to [origin/codex/permission-repair-status](https://github.com/zhenkun26/Insight/tree/codex/permission-repair-status). It was the verified local/remote branch head before this P3 follow-up. The follow-up commit and subsequent branch head are identified in Git history and the delivery response, not inferred from PR #2's historical head |
+| Review disposition | [PR #3](https://github.com/zhenkun26/Insight/pull/3) is OPEN / DRAFT, from `codex/permission-repair-status` to `main`, with only this status file in its verified comparison. Keep it in Draft; do not merge |
+| Preservation check | Merge commit parents are `47e165fddbf36b0da046bf94c02f9fdf7f9c0b28` and `268e32fd3751477951dc776c6c245ae5befc515d`. Existing local commits and branches were retained. Local main was fast-forwarded without switching the worktree; 148 files and related directories (240 paths) retained their recorded contents, permissions, ownership, and flags, and index/config/HEAD and uncommitted state were unchanged |
+| PR #2 CI checkpoint | PRE-MERGE PASS: both the [push run](https://github.com/zhenkun26/Insight/actions/runs/39016760016) and [PR run](https://github.com/zhenkun26/Insight/actions/runs/39016762387) passed for its merge-time source head `268e32fd3751477951dc776c6c245ae5befc515d` |
+| PR #3 CI checkpoint | PASS for `bb8d43e9a3ed3ab4d9ad6aa8534df977f999d6e0`: both the [push run](https://github.com/zhenkun26/Insight/actions/runs/39018836367) and [PR run](https://github.com/zhenkun26/Insight/actions/runs/39019037594) completed successfully. Ruff, import checks, tests, and the evaluation smoke test passed. Later revisions, including this P3 follow-up, require their own results in [PR #3 checks](https://github.com/zhenkun26/Insight/pull/3/checks). CI does not certify workstation permissions, reconstruct historical attributes, establish full application runtime behavior, or complete R01 |
+| Follow-up delivery | The earlier local-only restriction was superseded by explicit push and Draft PR authorization. This P3 follow-up is authorized for local commit and push to the same branch; preserve Draft status and report final commit, remote verification, and its own CI results separately |
 | Next eligible increment | R01, after the owner instructs work to start |
 
 ## Authoritative references
