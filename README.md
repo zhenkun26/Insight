@@ -1,287 +1,218 @@
-# Insight
+# 洞察者 · Insight
 
-[![CI](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml/badge.svg)](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml)
+**面向气象业务文档的本地知识库检索与问答工具。**
+
+[English](README-en.md) · [问题反馈](https://github.com/zhenkun26/Insight/issues)
+
+[![CI](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zhenkun26/Insight/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Insight 是一个面向气象业务资料的 local-first RAG 应用。它支持在本地导入 PDF、Markdown 和 TXT 资料，使用 BM25 与向量检索进行混合召回，并返回带来源引用的问答结果。项目自带的气象资料为参考样例，用于验证检索与问答链路。
+Insight 将 PDF、Markdown 和 TXT 资料转为可检索的知识库，帮助你查找相关段落，并通过本地模型生成附带来源信息的回答。它提供一个网页控制台和一组 HTTP API，适合整理气象业务资料、查阅流程说明，以及实验不同的 RAG 检索配置。
 
-Insight is a local-first RAG application for meteorological operational documents. It imports PDF, Markdown, and TXT files locally, performs hybrid retrieval with BM25 and vector search, and returns answers with source citations. The bundled meteorological documents are reference samples for verifying the retrieval and QA pipeline.
+从无需模型服务的 BM25 关键词检索开始，再按需接入 Ollama 和 Milvus，启用回答生成、向量检索与重排序。资料、索引和会话默认保存在本地；使用本机 Ollama 模型时，无需云端模型 API 密钥。
 
-## 功能概览
+## 主要功能
 
-- 在本地检索观测说明、预警信号说明和数据处理流程。
-- 关键词检索、语义检索、RRF 融合与可选重排序构成的混合召回链路。
-- 证据不足时明确拒答，避免模型自由补充事实。
+- **文档导入**：支持 `.pdf`、`.md`、`.markdown`、`.txt`，保留可提取的 PDF 页码与 Markdown 章节信息；可选 OCR 处理未提取到文本的 PDF 页面。
+- **混合检索**：BM25 关键词召回与可选向量召回通过 RRF（倒数排名融合）合并，可进一步使用关键词规则或 Ollama 模型重排序。
+- **带来源的问答**：返回检索片段、文件名、片段 ID 及可用的页码、章节；无片段通过阈值时返回明确的 `refused` 状态。
+- **网页控制台**：在同一页面上传资料、查看索引进度、搜索片段、接收流式回答并查看来源。
+- **索引任务与资料管理**：API 提供任务状态、符合条件的失败任务重试、排队任务取消，以及资料来源和标签编辑。
+- **运行状态可见**：返回请求追踪 ID、阶段耗时和检索降级状态；向量检索或重排序失败时保留可用的基础检索结果。
+- **可比较的检索评估**：使用内置脚本比较 BM25、向量和混合检索，以及不同重排序配置。
 
-## 架构
+## 快速开始
 
-```mermaid
-flowchart LR
-  A[PDF / Markdown / TXT] --> B[解析与分块]
-  B --> N[本地索引任务]
-  N --> C[SQLite 文档目录]
-  N --> D[BM25 索引]
-  N --> E[Ollama Embedding]
-  E --> F[Milvus / Milvus Lite]
-  Q[用户问题] --> G[BM25 + 向量召回]
-  F --> G
-  D --> G
-  G --> H[RRF 融合]
-  H --> I[可选 Rerank]
-  I --> R{相关性足够?}
-  R -->|否| K[明确拒答 + 阶段状态]
-  R -->|是| L[Ollama 生成]
-  L --> M[回答 + 来源引用 + trace]
-```
+以下命令适用于 macOS / Linux shell。需要 **Python 3.11+**；仓库 CI 使用 Python 3.11。安装依赖需要网络，关键词检索运行时不需要 Ollama 或独立 Milvus 服务。
 
-## 核心功能
-
-- 文档上传、列表、删除和重建索引。
-- PDF 页码、Markdown 标题和文本块元数据保留。
-- 可选扫描 PDF OCR：默认关闭，启用后只处理没有文本层的页面。
-- BM25 + 向量召回、向量分数归一化、RRF 融合、Top-K、双层阈值和可选 Rerank。
-- 可选 Ollama 模型重排：设置 `RERANKER_MODEL` 后按候选片段评分；模型失败自动保留 RRF 顺序。
-- `/chat`、`/chat/stream`、`/search`、文档管理和 `/health`。
-- Ollama、Milvus 和 Rerank 均通过 adapter 隔离，测试可使用 fake/mock。
-- 索引任务支持后台执行、状态轮询、失败重试、内容指纹幂等和模型版本变更提示。
-- 文档支持来源/标签过滤，搜索支持分页；问答支持可选会话上下文和 SSE 事件流。
-- RAG 工作流返回 query analysis、retrieval、rerank、relevance check、generation/fallback 阶段信息。
-- 评估脚本输出实际运行得到的 hit rate、MRR、拒答准确性和平均延迟；README 不预填性能指标。
-- 内置无 Node 依赖的本地 Web Console，可直接完成资料导入、混合检索和流式问答。
-
-## 技术栈
-
-Python 3.11+、FastAPI、Pydantic、Uvicorn、Ollama HTTP API、Milvus/Milvus Lite、BM25、SQLite、pytest、Docker Compose 和 GitHub Actions。
-
-## 项目目录
-
-```text
-app/
-├── api/          # FastAPI routes
-├── core/         # environment settings
-├── ingestion/    # parsers and chunking
-├── models/       # domain models
-├── retrieval/    # BM25, vector, hybrid fusion
-├── schemas/      # API schemas
-├── services/     # catalog, Ollama, ingestion, jobs, sessions, QA
-├── web/          # dependency-free local browser console
-└── workflows/    # explicit RAG stage state
-data/
-├── sample_docs/  # reference sample documents
-└── uploads/      # local runtime uploads
-scripts/evaluate.py
-tests/
-Dockerfile
-docker-compose.yml
-pyproject.toml
-```
-
-## 本地运行
-
-需要 Python 3.11+。推荐使用虚拟环境和 uv：
+### 1. 安装并启动
 
 ```bash
-uv venv
+git clone https://github.com/zhenkun26/Insight.git
+cd Insight
+
+python3 -m venv .venv
 source .venv/bin/activate
-uv pip install -e ".[dev]"
-cp .env.example .env
-uvicorn app.main:app --reload
+python -m pip install -e ".[dev]"
+
+MILVUS_URI= python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-启动后打开 [http://localhost:8000/](http://localhost:8000/)，即可使用本地 Web Console。页面不需要 Node.js、前端构建工具或外部 CDN；它与 FastAPI 使用同源请求，上传后自动轮询索引任务，并在问答区展示 SSE 片段、来源和阶段状态。也可以使用 `/docs` 查看完整 API。
+打开 [网页控制台](http://127.0.0.1:8000)。[交互式 API 文档](http://127.0.0.1:8000/docs) 和 [健康检查](http://127.0.0.1:8000/health) 也由同一服务提供。
 
-不安装或不启动外部模型时，应用仍可启动并使用关键词检索；问答和向量召回会根据依赖状态返回明确结果。
+这条启动命令显式关闭向量存储，先使用 BM25。未启动 Ollama 时，文档导入和关键词检索仍可使用；有检索结果的问答请求会报告模型不可用。
 
-上传和重建索引默认返回后台任务，不阻塞 HTTP 请求。可通过 `/jobs/{job_id}` 轮询状态；进程重启后未完成的任务会被标记为可重试失败。
+### 2. 导入资料并检索
 
-## Ollama 模型准备
+1. 在控制台上传 [`data/sample_docs/typhoon-warning.md`](data/sample_docs/typhoon-warning.md)。
+2. 等待索引任务显示 `succeeded`，资料状态显示 `indexed`。
+3. 在检索框输入：**台风预警信号分为几级？**
+4. 查看命中的片段、章节与文件名。
 
-安装 Ollama 后准备一个生成模型和一个 embedding 模型：
+也可以在另一个终端调用检索接口：
+
+```bash
+curl -sS http://127.0.0.1:8000/search \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"台风预警信号分为几级？","top_k":5}'
+```
+
+返回结果包含 `retrieval_results`、`retrieval_status` 和 `stages`。内置样例是合成演示资料，仅用于体验流程，不代表官方气象业务规范。
+
+### 3. 启用本地模型问答
+
+安装并启动 [Ollama](https://docs.ollama.com/quickstart)，然后下载项目默认使用的生成模型：
 
 ```bash
 ollama pull llama3.2:3b
+```
+
+Ollama 默认服务地址为 `http://localhost:11434`。若服务尚未启动，可在另一个终端运行 `ollama serve`。保持 Insight 运行，回到控制台的问答区提问，或调用：
+
+```bash
+curl -sS http://127.0.0.1:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"台风预警信号分为几级？"}'
+```
+
+需要流式输出时，改用 `/chat/stream` 并为 curl 添加 `-N`。当前控制台和问答提示词以中文为主。默认模型是配置示例，实际回答质量需要结合自己的资料验证。
+
+## 可选配置
+
+程序从环境变量读取配置，**不会自行加载 `.env`**。完整变量示例见 [`.env.example`](.env.example)，实际默认值见 [`app/core/config.py`](app/core/config.py)。
+
+如果使用 `.env`，请先复制示例文件（已有配置时保留原文件），再编辑所需值，并显式加载：
+
+```bash
+cp -n .env.example .env
+python -m uvicorn app.main:app --env-file .env --host 127.0.0.1 --port 8000
+```
+
+运行前先停止上一条 Insight 启动命令。示例文件设置了 `MILVUS_URI=data/milvus.db`，会尝试启用 Milvus Lite；只使用关键词检索时，将该值留空。
+
+| 配置项 | 代码默认值 | 用途 |
+| --- | --- | --- |
+| `LLM_BASE_URL` | `http://localhost:11434` | Ollama 服务地址 |
+| `LLM_MODEL` | `llama3.2:3b` | 回答生成模型 |
+| `MILVUS_URI` | 空 | 留空关闭向量存储；文件路径用于 Milvus Lite，服务 URI 用于 Milvus Server |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | 向量化模型 |
+| `TOP_K` / `CANDIDATE_K` | `5` / `20` | 最终返回数 / 每路召回候选数 |
+| `SCORE_THRESHOLD` | `0.01` | 融合或重排序后的分数阈值 |
+| `VECTOR_SCORE_THRESHOLD` | `0.7` | 向量候选的相似度阈值 |
+| `ENABLE_RERANK` / `RERANKER_MODEL` | `false` / 空 | 开启重排序；模型名为空时使用关键词规则 |
+| `OCR_ENABLED` / `OCR_LANGUAGE` | `false` / `eng` | PDF OCR 开关与 Tesseract 语言 |
+| `DATABASE_PATH` | `data/insight.db` | SQLite 资料、任务与会话记录 |
+
+### 向量检索与重排序
+
+启用向量检索前，下载默认的向量化模型：
+
+```bash
 ollama pull nomic-embed-text
 ```
 
-通过 `.env` 配置 `LLM_BASE_URL`、`LLM_MODEL` 和 `EMBEDDING_MODEL`。模型名称、地址、Top-K、阈值和超时均通过配置注入，不硬编码在业务逻辑中。
+在 `.env` 中设置 `MILVUS_URI=data/milvus.db`，按上面的 `--env-file` 命令重启。Milvus Lite 的平台要求见 [官方文档](https://milvus.io/docs/milvus_lite.md)。
 
-### 可选扫描 PDF OCR
-
-扫描版 PDF 没有文本层时，可以额外安装本机 OCR 工具并显式开启：
+如果此前已经导入资料，再提交一次重建索引任务，并通过返回的 `job_id` 查询进度：
 
 ```bash
-# macOS
-brew install poppler tesseract
-
-# Debian/Ubuntu
-sudo apt-get install poppler-utils tesseract-ocr
+curl -sS -X POST http://127.0.0.1:8000/documents/reindex
 ```
 
-中文资料还需要安装对应的 Tesseract 语言包，并确保 `pdftoppm`、`tesseract` 位于 `PATH`。在 `.env` 中设置：
+确认任务成功后，在检索响应中检查 `retrieval_status.vector`：`ok` 表示该次向量检索正常，`disabled` 表示未启用，`fallback:...` 表示发生降级。
 
-```dotenv
-OCR_ENABLED=true
-OCR_LANGUAGE=chi_sim+eng
-OCR_TIMEOUT_SECONDS=30
-# 可选：指定 OCR 临时目录的父目录
-OCR_TEMP_DIR=
+重排序默认关闭。设置 `ENABLE_RERANK=true` 可使用关键词规则；同时设置 `RERANKER_MODEL` 为已下载的 Ollama 生成模型名称，则使用模型评分。它会逐个候选调用模型，增加查询耗时。
+
+### 扫描 PDF 与容器配置
+
+- **OCR**：额外安装 Poppler（`pdftoppm`）、Tesseract 及所需语言包，设置 `OCR_ENABLED=true`。中文扫描资料需选择已安装的中文语言包，例如 `OCR_LANGUAGE=chi_sim+eng`。OCR 仅补充没有提取到文本的页面。
+- **Docker**：仓库提供 [Dockerfile](Dockerfile) 和 [Compose 配置](docker-compose.yml)，组合 API、Milvus、etcd 与 MinIO。Ollama 需单独运行；`LLM_BASE_URL` 必须是 API 容器可访问的地址，容器内的 `localhost` 不指向宿主机。默认 Compose 会发布宿主机端口，运行前应按自己的访问范围调整。
+
+## 工作方式
+
+```mermaid
+flowchart LR
+    D["PDF / Markdown / TXT"] --> P["解析与分块"]
+    P --> B["BM25 索引"]
+    P -. 可选 .-> V["Ollama 向量化 + Milvus"]
+    Q["问题"] --> R["检索与 RRF 融合"]
+    B --> R
+    V -.-> R
+    R --> K["可选重排序与阈值过滤"]
+    K --> S["搜索结果"]
+    K --> G{"问答：有可用片段？"}
+    G -->|是| A["Ollama 生成 + 来源信息"]
+    G -->|否| F["refused"]
 ```
 
-OCR 默认关闭，不会影响普通 PDF、Markdown 和 TXT。启用后系统仅 OCR 文本层为空的 PDF 页面；工具缺失、超时或命令失败会让索引任务失败并返回 `ocr_unavailable`、`ocr_timeout` 或 `ocr_failed` 语义。启用 OCR 后建议对已有扫描资料执行一次重建索引。Docker 镜像不预装这些系统工具，需自行制作带 OCR 运行时的镜像。
+后端使用 FastAPI；SQLite 保存文档、片段、任务及会话，BM25 索引默认写入 `data/bm25.json`，上传原件保存到 `data/uploads/`。前端是由后端直接托管的 HTML、CSS 和 JavaScript，无需独立的前端构建流程。
 
-## Milvus
+## API 概览
 
-本地开发可以将 `MILVUS_URI` 指向 Milvus Lite 文件路径；使用 Docker Compose 时：
+| 接口 | 用途 |
+| --- | --- |
+| `GET /health` | 服务与依赖状态 |
+| `POST /documents/upload` | 以 multipart 字段 `file` 上传文档，返回索引任务 |
+| `GET /documents` | 列出资料，支持来源、标签与状态筛选 |
+| `PATCH /documents/{document_id}/metadata` | 编辑来源、标签和描述 |
+| `POST /documents/reindex` | 提交重建索引任务 |
+| `GET /jobs/{job_id}` | 查询任务进度与错误 |
+| `POST /jobs/{job_id}/retry` | 重试符合条件的失败任务 |
+| `POST /jobs/{job_id}/cancel` | 取消尚未开始运行的排队任务 |
+| `POST /search` | 检索片段，支持 `source`、`tag`、`document_ids` 范围筛选 |
+| `POST /chat` | 返回回答、来源和工作流状态 |
+| `POST /chat/stream` | 通过 SSE 返回阶段、来源和文本事件 |
+
+完整请求与响应结构见运行后的 [API 文档](http://127.0.0.1:8000/docs)。API 问答可传入 `session_id` 保留有限历史；历史用于对话上下文，不作为文档证据。
+
+## 开发与验证
+
+安装上述开发依赖后，在仓库根目录运行：
 
 ```bash
-docker compose up -d milvus
-uvicorn app.main:app --reload
-```
-
-完整 API 容器和 Milvus 依赖可一起启动：
-
-```bash
-docker compose up --build
-```
-
-首次启动或切换 embedding 模型后，建议调用重建索引接口。不同 embedding 模型的向量维度可能不同，不能直接复用旧集合。
-
-## 导入文档
-
-```bash
-curl -X POST http://localhost:8000/documents/upload \
-  -F "file=@data/sample_docs/typhoon-warning.md"
-
-curl http://localhost:8000/documents
-curl -X POST http://localhost:8000/documents/reindex
-
-# 上传/重建响应中的 job_id
-curl http://localhost:8000/jobs/<job_id>
-curl -X POST http://localhost:8000/jobs/<job_id>/retry
-curl -X POST http://localhost:8000/jobs/<job_id>/cancel
-
-# 更新来源和标签
-curl -X PATCH http://localhost:8000/documents/<document_id>/metadata \
-  -H 'Content-Type: application/json' \
-  -d '{"source":"reference","tags":["typhoon"],"description":"typhoon warning procedures"}'
-```
-
-## 搜索与问答
-
-```bash
-curl -X POST http://localhost:8000/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"台风预警信号分为几级？","top_k":5}'
-
-curl -X POST http://localhost:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"台风预警信号分为几级？"}'
-
-# 按标签过滤并分页
-curl -X POST http://localhost:8000/search \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"预警","tag":"typhoon","offset":0,"top_k":5}'
-
-# SSE 流式问答
-curl -N -X POST http://localhost:8000/chat/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"台风预警信号分为几级？","session_id":"demo-session"}'
-```
-
-问答响应包含 `answer`、`sources`、`retrieval_results`、`query`、`latency_ms` 和 `status`。来源包括文件名、页码（可用时）、章节和文本块 ID。没有达到阈值的上下文时，系统返回"当前知识库中没有足够信息"语义的拒答。
-
-完整响应还包含 `trace_id`、`stages` 和 `retrieval_status`。`/chat/stream` 使用 `text/event-stream`，事件包括 `start`、`retrieval`、`source`、`token` 和 `complete`；配置了 Ollama 时会使用原生 NDJSON 流式片段，并在连接异常时标记 fallback。排队中的索引任务可以取消，运行中任务不会被强制终止。会话历史仅辅助当前问题理解，不替代当前轮次的检索证据。
-
-`/search` 的 `stages` 返回 `keyword`、`vector`、`fusion`、`rerank` 和 `retrieval` 五个阶段。每项包含 `status` 与 `latency_ms`；未启用阶段的耗时为 `null`，向量或模型异常时会显示已有的 `fallback:<异常类别>` 状态。控制台在检索结果上方展示这些阶段信息。
-
-### 可选模型重排
-
-默认不调用重排模型。需要使用本地 Ollama 对混合召回候选进行相关性评分时，设置：
-
-```dotenv
-ENABLE_RERANK=true
-RERANKER_MODEL=<本地重排模型名>
-CANDIDATE_K=20
-```
-
-系统要求模型只返回 `0..1` 的单个数字；模型不可用、超时或输出无法解析时，保留重排前的 RRF 顺序，并在 `retrieval_status.rerank` 中记录 `fallback`。模型重排按候选逐条调用 Ollama，可能增加延迟，建议从较小的 `CANDIDATE_K` 开始。清空 `RERANKER_MODEL` 可回退到不需要模型的确定性关键词重排。
-
-## 测试
-
-```bash
-pytest
 ruff check app tests scripts
-python -c "from app.main import app; print(app.title)"
+pytest
+python scripts/evaluate.py --retrieval-mode bm25 --output evaluation-bm25.json
 ```
 
-默认测试不连接真实 Ollama、Milvus 或外部 API。API 测试在安装完整依赖后执行；如果 FastAPI 尚未安装，相关测试会被标记为 skipped，不会伪造通过。
-
-## 评估
-
-评估数据位于 `data/eval_questions.json`，包含 10～20 条问题、期望命中文件/关键内容，以及拒答样例。运行：
+BM25 评估不调用模型服务。其他配置可通过 `python scripts/evaluate.py --help` 查看，例如使用已下载的向量化模型比较混合检索：
 
 ```bash
-python scripts/evaluate.py --output data/eval-result.json
-```
-
-默认检索模式是 `bm25`，且重排 `disabled`：只运行本地 BM25 基线，不访问 Ollama、Milvus 或外部 API。可以用同一问题集比较不同检索和重排路径：
-
-```bash
-# 默认离线基线
-python scripts/evaluate.py --reranker-mode disabled --output /tmp/insight-eval-disabled.json
-
-# 确定性的关键词重排，不需要模型服务
-python scripts/evaluate.py --reranker-mode keyword --output /tmp/insight-eval-keyword.json
-
-# 显式启用 Ollama 重排；每个候选片段会产生一次本地模型请求
-python scripts/evaluate.py \
-  --reranker-mode ollama \
-  --reranker-model "$RERANKER_MODEL" \
-  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
-  --top-k 5 \
-  --output /tmp/insight-eval-ollama.json
-
-# 向量-only：显式调用 Ollama Embedding，使用内存向量后端
-python scripts/evaluate.py \
-  --retrieval-mode vector \
-  --vector-backend memory \
-  --embedding-model "${EMBEDDING_MODEL:-nomic-embed-text}" \
-  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
-  --vector-score-threshold "${VECTOR_SCORE_THRESHOLD:-0.7}" \
-  --output /tmp/insight-eval-vector.json
-
-# 混合检索 + Milvus Lite：URI 和 collection 请按本次实验隔离
 python scripts/evaluate.py \
   --retrieval-mode hybrid \
-  --vector-backend milvus \
-  --embedding-model "${EMBEDDING_MODEL:-nomic-embed-text}" \
-  --ollama-base-url "${LLM_BASE_URL:-http://localhost:11434}" \
-  --milvus-uri /tmp/insight-eval-milvus.db \
-  --milvus-collection insight_eval_hybrid \
-  --vector-score-threshold "${VECTOR_SCORE_THRESHOLD:-0.7}" \
-  --output /tmp/insight-eval-hybrid.json
+  --vector-backend memory \
+  --embedding-model nomic-embed-text \
+  --output evaluation-hybrid.json
 ```
 
-输出保留 `hit_rate`、`mrr`、`refusal_accuracy` 和 `average_latency_ms`，并新增 `refusal_calibration`（阈值、拒答样例数、误报回答数、误报率）、`retrieval_mode`、`profile`、`models.embedding`、向量后端参数、`average_stage_latency_ms` 以及每条问题的 `stage_status`/`stage_timings_ms`。向量分数会归一化到 `[0, 1]`；`VECTOR_SCORE_THRESHOLD` 默认 `0.7`，在向量/混合检索中于 RRF 前过滤弱候选，`SCORE_THRESHOLD` 仍用于融合结果。可以使用同一问题集重复运行不同阈值，比较 `hit_rate`/`mrr` 与 `refusal_calibration.false_positive_rate`；BM25 默认模式不启用向量阈值。`null` 表示阶段或指标不适用，不代表零毫秒；向量 profile 的模型、地址、后端、URI、collection 和实际延迟会写入结果。`vector`/`hybrid` profile 缺少 Embedding 模型或 Milvus URI 时会快速失败。本项目不预置或声称任何准确率、延迟或模型压缩指标；这些数值必须由本机按指定语料和配置重新测得。
+报告包含命中率、MRR、阶段耗时与拒答相关指标。这里的 `refusal_accuracy` 衡量标注为应拒答的问题是否返回空检索结果，**不衡量生成答案的事实正确性**。内置数据用于回归和演示，不能替代真实业务语料上的人工评估。
 
-## 已知限制
+主要代码入口：
 
-- PDF 标题识别依赖文档文本层，扫描图片 PDF 需要 OCR 扩展。
-- 扫描 PDF OCR 依赖本机 Poppler、Tesseract 和相应语言包；复杂表格、手写文字和版面结构不保证识别质量。
-- Milvus 集合的向量维度必须与当前 embedding 模型一致，切换模型后需要重建索引。
-- 向量评估需要本地 Ollama Embedding；Milvus Lite 评估会写入指定 URI，重复实验应使用新的 collection 或临时数据库文件。不同 embedding 模型的分数分布可能不同，需要通过 `VECTOR_SCORE_THRESHOLD` 做本地校准；默认值不是准确率保证。
+| 路径 | 内容 |
+| --- | --- |
+| [`app/api/`](app/api/) | HTTP 路由与接口编排 |
+| [`app/ingestion/`](app/ingestion/) | 文档解析、分块与 OCR |
+| [`app/retrieval/`](app/retrieval/) | BM25、向量存储与混合检索 |
+| [`app/services/`](app/services/) | 资料管理、任务、Ollama、问答和会话 |
+| [`app/web/`](app/web/) | 网页控制台 |
+| [`scripts/evaluate.py`](scripts/evaluate.py) | 检索评估入口 |
+| [`tests/`](tests/) | 自动化测试 |
 
-- Web Console 面向本地单用户场景，不提供认证、权限、会话列表或复杂文档管理功能。
-- 索引任务由单进程本地 worker 执行，不提供跨机器任务调度；进程重启后的 running 任务需要重试。
-- 原生流式效果取决于 Ollama 服务和模型；流式连接异常时会退化为完整回答事件。
-- Rerank 目前作为可选 adapter；模型不可用时保留混合检索顺序并记录 fallback。
-- 附带的气象资料为参考样例，不能替代正式气象业务规范。
+## 当前边界
 
-## 路线图
+- **来源信息辅助核对**：系统通过提示词要求基于资料回答并引用来源，尚未实现逐条答案与引用的一致性验证。检索分数也不是答案可信度。
+- **检索与问答范围有区别**：`/search` 支持文档范围筛选；当前 `/chat` 和 `/chat/stream` 不应用这些筛选参数。
+- **面向本地使用**：API 未实现用户认证或权限隔离。快速开始仅绑定 `127.0.0.1`；如需共享访问，应先补齐访问控制。配置远程模型地址会将相应查询或文档片段发送至该服务。
+- **格式与业务适用性**：暂不支持 Word 文档。复杂 PDF 和扫描件的解析质量需核对；涉及正式气象业务判断时，应回到有效的原始业务文件复核。
 
-- 增强 OCR 和更稳健的章节识别。
-- 增加可选 LangGraph 状态图和节点级追踪。
-- 增加真实公开资料的许可与来源管理。
-- 增加可选的跨编码器 Rerank 和更系统的离线评估集。
+## 反馈与贡献
 
-> 本项目由 Vibe Coding 辅助实现落地。Built with Vibe Coding.
+项目由 [zhenkun26](https://github.com/zhenkun26) 维护。使用问题、缺陷和功能建议可提交至 [GitHub Issues](https://github.com/zhenkun26/Insight/issues)，代码或文档改进欢迎提交 Pull Request。
+
+报告问题时，请附上复现步骤、Python 版本、相关配置项和错误状态，并去除敏感资料与凭据。提交代码改动前，请运行 lint、相关测试和受影响的检索评估。
+
+## 许可证
+
+采用 [MIT License](LICENSE)。模型和导入资料分别遵循其自身许可。
