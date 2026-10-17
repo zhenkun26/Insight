@@ -20,6 +20,7 @@ This is the current-state entry for [the refactoring plan](../REFACTOR_INTEGRATI
 | Local main | `47e165fddbf36b0da046bf94c02f9fdf7f9c0b28`, matching `origin/main` at the completed synchronization check |
 | Delivery scope | This status-record increment changes this existing Markdown file only. Initial remote delivery also includes the existing refactoring plan and planning consistency review; there are no application implementation changes |
 | Remote delivery | Owner-authorized on 2026-10-17: push the status update and its planning-document dependencies to `origin/codex/permission-repair-status`; do not merge into `main`. Remote publication is verified in the delivery response. The separately authorized README-only [PR #1](https://github.com/zhenkun26/Insight/pull/1) was already merged into `main` |
+| Review disposition | Owner-authorized Draft PR from `codex/permission-repair-status` to `main`, limited to the plan, this status record, and the planning consistency review; retain draft state and do not merge. The source branch incorporates the existing `main` history to exclude already-merged README changes from the PR comparison |
 | Next eligible increment | R01, after the owner instructs work to start |
 
 ## Authoritative references
