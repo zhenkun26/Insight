@@ -8,20 +8,22 @@ This is the current-state entry for [the refactoring plan](../REFACTOR_INTEGRATI
 
 | Field | Current value |
 | --- | --- |
-| Packet | P3 review follow-up: identify actual PR delivery and historical maintenance evidence |
-| Authorized scope | Update this status file only, verify, commit, and push to the current branch; keep PR #2 as a draft and do not merge |
-| User reference | 2026-10-17 permission-repair and read-only investigation instructions, followed by approval to address the two P3 review findings with truthful evidence identities and unrecoverable-information limits |
+| Packet | Post-merge status follow-up: record PR #2 integration and local main synchronization |
+| Authorized scope | Update this status file only, verify, and commit locally; do not push or start R01 |
+| User reference | 2026-10-17 authorization to mark PR #2 ready and merge after CI, subsequent local main synchronization, and the current request to record those results in a local-only status update |
 | Planning disposition | COMPLETE (PLAN-00) |
 | Maintenance disposition | COMPLETE; permission repair and investigation closed with the historical attribute limitation accepted |
 | Implementation disposition | NOT_STARTED |
 | Active implementation increment | NONE |
 | Branch | `codex/permission-repair-status` |
 | Application baseline | `abb59d7515119e9dcc4ee13bc307cbdc4bed8841` |
-| Local main | `47e165fddbf36b0da046bf94c02f9fdf7f9c0b28`, matching `origin/main` at the completed synchronization check |
-| Delivery scope | This status-record increment changes this existing Markdown file only. Initial remote delivery also includes the existing refactoring plan and planning consistency review; there are no application implementation changes |
-| Remote delivery | PUBLISHED: the plan, status record, and consistency review are on [origin/codex/permission-repair-status](https://github.com/zhenkun26/Insight/tree/codex/permission-repair-status). The verified pre-follow-up remote head is `a095d67821291fb6a7398133e680285687befaf8`; this documentation follow-up is authorized for the same branch |
-| Review disposition | [PR #2](https://github.com/zhenkun26/Insight/pull/2) exists and is OPEN / DRAFT, from `codex/permission-repair-status` to `main`; it is not merged. Its verified comparison contains exactly the plan, this status record, and the planning consistency review. Existing `main` history is included in the source branch, excluding already-merged README changes. Keep the PR as a draft; do not merge |
-| CI evidence checkpoint | Both the [push run](https://github.com/zhenkun26/Insight/actions/runs/39016103272) and [PR run](https://github.com/zhenkun26/Insight/actions/runs/39016120920) passed for `a095d67821291fb6a7398133e680285687befaf8` on 2026-10-17. These results apply only to that revision; subsequent commits need their own results in [PR #2 checks](https://github.com/zhenkun26/Insight/pull/2/checks). CI does not verify this workstation's permissions or historical attributes |
+| Local main | `d4820a2babfbbf8cd4022fad80bd6e6c81889ad7`, matching both `origin/main` and the live remote main at the completed synchronization check. The working directory stayed on `codex/permission-repair-status` |
+| Delivery scope | This local follow-up changes this existing Markdown file only; it is not part of the already-merged PR #2 head. No application implementation changes |
+| Remote delivery | MERGED: the plan, status record, and consistency review were integrated into `main` by [PR #2](https://github.com/zhenkun26/Insight/pull/2), merge commit `d4820a2babfbbf8cd4022fad80bd6e6c81889ad7`. The preserved [remote source branch](https://github.com/zhenkun26/Insight/tree/codex/permission-repair-status) remains at `268e32fd3751477951dc776c6c245ae5befc515d` at this check |
+| Review disposition | [PR #2](https://github.com/zhenkun26/Insight/pull/2) is MERGED, after the owner-authorized transition from Draft to Ready for review and verification of CI for head `268e32fd3751477951dc776c6c245ae5befc515d`. Merge recorded at 2026-10-17 04:26:43 America/New_York; only the three planning/status documents were integrated |
+| Preservation check | Merge commit parents are `47e165fddbf36b0da046bf94c02f9fdf7f9c0b28` and `268e32fd3751477951dc776c6c245ae5befc515d`. Existing local commits and branches were retained. Local main was fast-forwarded without switching the worktree; 148 files and related directories (240 paths) retained their recorded contents, permissions, ownership, and flags, and index/config/HEAD and uncommitted state were unchanged |
+| CI evidence checkpoint | PRE-MERGE PASS: both the [push run](https://github.com/zhenkun26/Insight/actions/runs/39016760016) and [PR run](https://github.com/zhenkun26/Insight/actions/runs/39016762387) passed for `268e32fd3751477951dc776c6c245ae5befc515d`. These checks do not certify this unpublished follow-up, workstation permissions, historical attributes, or R01 completion |
+| Local follow-up delivery | LOCAL_ONLY: commit this status update locally and leave it unpushed, as explicitly requested. No remote CI result is claimed for it; the final local commit is identified in Git history and the delivery response |
 | Next eligible increment | R01, after the owner instructs work to start |
 
 ## Authoritative references
